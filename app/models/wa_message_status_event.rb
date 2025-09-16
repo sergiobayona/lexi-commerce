@@ -1,0 +1,2 @@
+class WaMessageStatusEvent < ApplicationRecord
+end

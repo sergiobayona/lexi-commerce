@@ -1,0 +1,2 @@
+class WaBusinessNumber < ApplicationRecord
+end

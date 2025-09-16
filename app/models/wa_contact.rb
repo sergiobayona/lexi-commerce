@@ -1,0 +1,2 @@
+class WaContact < ApplicationRecord
+end
