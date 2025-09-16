@@ -8,7 +8,7 @@ require "openssl"
 require "digest"
 
 module Whatsapp
-  module MediaAPI
+  module MediaApi
     class Error < StandardError
       attr_reader :status, :body, :code
       def initialize(message, status: nil, body: nil, code: nil)
