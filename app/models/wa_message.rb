@@ -1,4 +1,3 @@
-# app/models/wa_message.rb
 class WaMessage < ApplicationRecord
   self.inheritance_column = :_type_disabled
   enum :direction, { inbound: "inbound", outbound: "outbound" }, prefix: true

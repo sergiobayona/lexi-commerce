@@ -19,7 +19,7 @@ class WebhooksController < ApplicationController
 
     WebhookEvent.create!(provider: "whatsapp", object_name: data["object"], payload: data)
 
-    WhatsApp::IngestWebhookJob.perform_later(data)
+    Whatsapp::IngestWebhookJob.perform_later(data)
     head :ok
   rescue JSON::ParserError
     head :bad_request
