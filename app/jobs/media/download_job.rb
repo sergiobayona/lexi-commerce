@@ -8,11 +8,11 @@ class Media::DownloadJob < ApplicationJob
     media.update!(download_status: "downloading")
 
     # 1) Get media URL from Graph API: GET /{media_id}?access_token=...
-    media_url, filename, mime_type, file_size = Whatsapp::MediaAPI.lookup(media.provider_media_id)
+    media_url, filename, mime_type, file_size = Whatsapp::MediaApi.lookup(media.provider_media_id)
 
     # 2) Stream download and upload to S3 with sha256-based key
-    key = "wa/#{media.sha256}#{Whatsapp::MediaAPI.extension_for(mime_type)}"
-    bytes = Whatsapp::MediaAPI.stream_to_s3(media_url, key)
+    key = "wa/#{media.sha256}#{Whatsapp::MediaApi.extension_for(mime_type)}"
+    bytes = Whatsapp::MediaApi.stream_to_s3(media_url, key)
 
     media.update!(
       storage_url: "s3://#{ENV["S3_BUCKET"]}/#{key}",
