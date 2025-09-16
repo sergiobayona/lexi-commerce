@@ -1,0 +1,76 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "changes": [
+        {
+          "field": "messages",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550001111",
+              "phone_number_id": "111"
+            },
+            "contacts": [
+              {
+                "profile": { "name": "Alice" },
+                "wa_id": "16505550001"
+              }
+            ],
+            "messages": [
+              {
+                "from": "16505550001",
+                "id": "wamid.A1",
+                "timestamp": "1749416000",
+                "type": "text",
+                "text": {
+                  "body": "Hello there"
+                }
+              },
+              {
+                "from": "16505550001",
+                "id": "wamid.A2",
+                "timestamp": "1749416010",
+                "type": "audio",
+                "audio": {
+                  "mime_type": "audio/ogg",
+                  "sha256": "6f1ed002ab5595859014ebf0951522d9b3b5a8a9fbe3c4f5a7d6c8b2e3f5a1c0",
+                  "id": "MEDIA_7770001",
+                  "voice": true
+                }
+              }
+            ]
+          }
+        },
+        {
+          "field": "messages",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550001111",
+              "phone_number_id": "111"
+            },
+            "contacts": [
+              {
+                "profile": { "name": "Bob" },
+                "wa_id": "16505550002"
+              }
+            ],
+            "messages": [
+              {
+                "from": "16505550002",
+                "id": "wamid.B1",
+                "timestamp": "1749416020",
+                "type": "text",
+                "text": {
+                  "body": "Need help with my order"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
