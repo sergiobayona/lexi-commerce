@@ -66,7 +66,8 @@ module Whatsapp
         ct = content_type || head(url)[:content_type]
 
         # Use a temporary file to avoid stream threading issues
-        Tempfile.create([ "wa-media", Whatsapp::MediaApi.extension_for(ct) ]) do |temp_file|
+        # Open in binary mode to handle media files properly
+        Tempfile.create([ "wa-media", Whatsapp::MediaApi.extension_for(ct) ], binmode: true) do |temp_file|
           # Download to temp file while calculating SHA256
           begin
             download(url) do |chunk|
