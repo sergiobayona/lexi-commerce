@@ -19,7 +19,7 @@ module Whatsapp
       end
     end
 
-    GRAPH_API_VERSION = (ENV["GRAPH_API_VERSION"] || "v21.0").freeze
+    GRAPH_API_VERSION = (ENV["GRAPH_API_VERSION"] || "v23.0").freeze
     OPEN_TIMEOUT_S    = (ENV["HTTP_OPEN_TIMEOUT"] || "5").to_i
     READ_TIMEOUT_S    = (ENV["HTTP_READ_TIMEOUT"] || "120").to_i
     WRITE_TIMEOUT_S   = (ENV["HTTP_WRITE_TIMEOUT"] || "120").to_i
@@ -53,8 +53,11 @@ module Whatsapp
         raise Error, "S3 bucket not configured" if bucket.to_s.empty?
 
         require "aws-sdk-s3"
-        s3 = Aws::S3::Resource.new(region: region.presence)
-        obj = s3.bucket(bucket).object(key)
+        require "tempfile"
+
+        Rails.logger.info("Starting media download from WhatsApp: #{url[0..100]}...")
+
+        s3_client = Aws::S3::Client.new(region: region.presence)
 
         bytes_count = 0
         sha = Digest::SHA256.new
@@ -62,41 +65,75 @@ module Whatsapp
         # Get content_type if not provided
         ct = content_type || head(url)[:content_type]
 
-        # Upload streaming
-        obj.upload_stream(content_type: ct, acl: "private", metadata: {}) do |write_io|
-          download(url) do |chunk|
-            write_io.write(chunk)
-            sha.update(chunk)
-            bytes_count += chunk.bytesize
+        # Use a temporary file to avoid stream threading issues
+        Tempfile.create([ "wa-media", Whatsapp::MediaApi.extension_for(ct) ]) do |temp_file|
+          # Download to temp file while calculating SHA256
+          begin
+            download(url) do |chunk|
+              temp_file.write(chunk)
+              sha.update(chunk)
+              bytes_count += chunk.bytesize
+            end
+          rescue Error => e
+            Rails.logger.error("Failed to download media from WhatsApp: #{e.message}")
+            Rails.logger.error("Status: #{e.status}, Body: #{e.body&.to_s&.[](0..500)}")
+            raise
           end
+
+          # Ensure all data is written and seek to beginning
+          temp_file.flush
+          temp_file.rewind
+
+          Rails.logger.info("Downloaded #{bytes_count} bytes, uploading to S3: #{bucket}/#{key}")
+
+          # Upload to S3 from temp file
+          s3_client.put_object(
+            bucket: bucket,
+            key: key,
+            body: temp_file,
+            content_type: ct,
+            acl: "private",
+            metadata: { "sha256" => sha.hexdigest }
+          )
         end
 
         computed = sha.hexdigest
         if expected_sha256.present? && expected_sha256.downcase != computed.downcase
-          # Optionally: delete the uploaded object if integrity check fails
-          obj.delete rescue nil
+          # Delete the uploaded object if integrity check fails
+          begin
+            s3_client.delete_object(bucket: bucket, key: key)
+          rescue => _
+            # non-fatal
+          end
           raise Error, "SHA256 mismatch (expected #{expected_sha256}, got #{computed})"
         end
 
-        # Save checksum as object metadata tags (optional update)
-        begin
-          obj.copy_to(obj, metadata_directive: "REPLACE", content_type: ct, metadata: { "sha256" => computed }, acl: "private")
-        rescue => _
-          # non-fatal; keep going
-        end
-
+        Rails.logger.info("Successfully uploaded media to S3: #{key} (#{bytes_count} bytes, SHA256: #{computed})")
         { bytes: bytes_count, sha256: computed }
       end
 
       # Convenience: do everything in one call starting from media_id.
       # Returns { key:, bytes:, sha256:, mime_type:, filename: }
-      def download_to_s3_by_media_id(media_id, key_prefix: "wa/")
-        url, filename, mime_type, _size = lookup(media_id)
-        ext = extension_for(mime_type)
-        key = "#{key_prefix}#{media_id}#{ext}"
+      def download_to_s3_by_media_id(media_id, key_prefix: "wa/", max_retries: 2)
+        retries = 0
+        begin
+          url, filename, mime_type, _size = lookup(media_id)
+          ext = extension_for(mime_type)
+          key = "#{key_prefix}#{media_id}#{ext}"
 
-        res = stream_to_s3(url, key, content_type: mime_type)
-        { key:, bytes: res[:bytes], sha256: res[:sha256], mime_type:, filename: filename }
+          res = stream_to_s3(url, key, content_type: mime_type)
+          { key:, bytes: res[:bytes], sha256: res[:sha256], mime_type:, filename: filename }
+        rescue Error => e
+          # Retry if URL expired (401/403 errors)
+          if (e.status == 401 || e.status == 403) && retries < max_retries
+            retries += 1
+            Rails.logger.warn("Media URL expired or unauthorized (attempt #{retries}/#{max_retries}), fetching new URL for media_id: #{media_id}")
+            sleep(0.5 * retries) # Brief delay before retry
+            retry
+          else
+            raise
+          end
+        end
       end
 
       # Map MIME types to preferred file extensions.
@@ -122,8 +159,8 @@ module Whatsapp
       # ---- HTTP helpers ----
 
       def access_token!
-        tok = ENV["WHATSAPP_TOKEN"].to_s
-        raise Error, "WHATSAPP_TOKEN not configured" if tok.empty?
+        tok = ENV["INGESTION_WHATSAPP_TOKEN"].to_s
+        raise Error, "INGESTION_WHATSAPP_TOKEN not configured" if tok.empty?
         tok
       end
 
@@ -178,9 +215,25 @@ module Whatsapp
         res = with_retries do
           http_request(uri) do |http|
             req = Net::HTTP::Get.new(uri)
+
+            # WhatsApp media URLs require Authorization header with access token
+            # Even though the URL has an access_token query param, the header is also required
+            if uri.host&.include?(".fbcdn.net") || uri.host&.include?("lookaside.fbsbx.com")
+              req["Authorization"] = "Bearer #{access_token!}"
+              Rails.logger.debug("Adding Authorization header for WhatsApp media download from #{uri.host}")
+            end
+
             http.request(req) do |r|
               unless r.is_a?(Net::HTTPSuccess)
-                raise Error.new("Download failed", status: r.code.to_i, body: r.body)
+                body = r.body.to_s[0..500] # Truncate body for logging
+                Rails.logger.error("WhatsApp Media download failed: HTTP #{r.code} - #{r.message}. URL: #{uri}, Body: #{body}")
+
+                # If we get a 401/403, it might be an expired URL (5-minute validity)
+                if r.code.to_i == 401 || r.code.to_i == 403
+                  raise Error.new("Media URL may have expired (URLs are only valid for 5 minutes) or token is invalid: HTTP #{r.code}", status: r.code.to_i, body: r.body)
+                else
+                  raise Error.new("Download failed: HTTP #{r.code} - #{r.message}", status: r.code.to_i, body: r.body)
+                end
               end
               r.read_body(&block)
               r
