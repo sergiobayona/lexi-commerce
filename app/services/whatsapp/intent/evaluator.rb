@@ -57,71 +57,10 @@ module Whatsapp
       end
 
       def greeting?(text)
-        # Check for simple greeting patterns
-        simple_greetings_match?(text) || mixed_language_greetings_match?(text)
+        Whatsapp::Nlp::Greetings.greeting?(text)
       end
 
       private
-
-      def simple_greetings_match?(text)
-        patterns = [
-          # English greetings
-          /\b(hi|hello|hey|howdy|yo|sup)\b/i,
-          /\bgood\s+(morning|afternoon|evening|night)\b/i,
-
-          # Spanish basic greetings
-          /\bhola\b/i,
-          /\bbuenos\s+d[íi]as?\b/i,
-          /\bbuenas?\s+(tardes?|noches?)\b/i,
-          /\b(buenas|buen\s+d[íi]a)\b/i,
-
-          # Spanish "how are you" variations (with/without question marks)
-          /\b(¿|que\s+)?c[óo]mo\s+(est[aáà]s?|andas?|te\s+va|va\s+todo|te\s+encuentras?)\b/i,
-          /\b(¿|que\s+)?qu[eé]\s+(tal|pasa|onda|hubo|hay)\b/i,
-          /\btodo\s+bien\b/i,
-
-          # Casual Spanish greetings
-          /\b(saludos?|holi|holita|ey|oye)\b/i,
-
-          # Regional variations
-          /\b(qu[íi]hubo|quiubo)\b/i,
-          /\bqu[eé]\s+m[aá]s\b/i,
-          /\b(epale|[eé]palee?)\b/i,
-          /\b(manin|pana|weón?|wey|g[üu]ey|bro|hermano?)\b/i,
-
-          # Formal Spanish greetings
-          /\bmuy\s+buenos?\s+d[íi]as?\b/i,
-          /\btengan?\s+buenos?\s+d[íi]as?\b/i,
-          /\bque\s+tengas?\s+buen\s+d[íi]a\b/i,
-
-          # Common variations without accents
-          /\bcomo\s+(estas?|andas?)\b/i,
-          /\bque\s+(tal|pasa)\b/i,
-          /\bbuenos\s+dias?\b/i,
-          /\bbuenas\s+(tardes?|noches?)\b/i,
-
-          # Internet slang and abbreviations
-          /\b[qk]\s+(tal|pasa|onda)\b/i,
-          /\bxq\b/i,
-
-          # Other variations
-          /\b(un\s+saludo|cordial\s+saludo)\b/i,
-          /\b(muchachos?|gente|amigos?)\b/i
-        ]
-
-        patterns.any? { |pattern| text =~ pattern }
-      end
-
-      def mixed_language_greetings_match?(text)
-        mixed_patterns = [
-          /hola.*how\s+are\s+you/i,
-          /hi.*c[óo]mo\s+est[aáà]s/i,
-          /hello.*qu[eé]\s+tal/i,
-          /hey.*hola/i
-        ]
-
-        mixed_patterns.any? { |pattern| text =~ pattern }
-      end
 
       def greet_intent(first_time)
         if first_time

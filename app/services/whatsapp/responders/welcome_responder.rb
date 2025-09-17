@@ -46,7 +46,7 @@ module Whatsapp
       private
 
       def determine_welcome_message(greeting_text, name)
-        language = detect_language(greeting_text)
+        language = Whatsapp::Nlp::Greetings.detect_language(greeting_text)
 
         case language
         when :spanish
@@ -56,21 +56,9 @@ module Whatsapp
         end
       end
 
-      def detect_language(text)
-        return :spanish if spanish_greeting?(text)
-        :english
-      end
-
-      def spanish_greeting?(text)
-        spanish_patterns = [
-          /\b(hola|buenos\s+d[íi]as|buenas\s+(tardes|noches)|saludos|qu[eé]\s+tal|c[óo]mo\s+est[aá]s)\b/i
-        ]
-        spanish_patterns.any? { |pattern| text =~ pattern }
-      end
-
       def spanish_welcome_message(name)
         <<~SPANISH.strip
-          ¡Hola #{name}! 👋 ¡Soy Lexi!
+          ¡Hola #{name} 👋 Soy Lexi!
 
           Soy tu asistente de aprendizaje de inglés. Estoy aquí para ayudarte a practicar y mejorar tu pronunciación.
 
@@ -78,23 +66,19 @@ module Whatsapp
           • Mensajes de voz para practicar pronunciación
           • Texto para revisar gramática
           • Preguntas sobre inglés
-
-          ¿En qué te gustaría practicar hoy?
         SPANISH
       end
 
       def english_welcome_message(name)
         <<~ENGLISH.strip
-          Hello #{name}! 👋 I'm Lexi!
+          Hello #{name} 👋 I'm Lexi!
 
-          I'm your English learning assistant. I'm here to help you practice and improve your pronunciation.
+          I'm your English learning coach. I'm here to help you practice and improve your pronunciation.
 
           📝 You can send me:
           • Voice messages to practice pronunciation
           • Text to review grammar
           • Questions about English
-
-          What would you like to practice today?
         ENGLISH
       end
     end
