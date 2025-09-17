@@ -137,8 +137,8 @@ rails server
 # or
 bin/rails s
 
-# Start Sidekiq for background jobs
-bundle exec sidekiq
+# Start Solid Queue for background jobs
+bundle exec rails solid_queue:start
 
 # Rails console
 rails console
@@ -190,14 +190,15 @@ brakeman
 
 ### Background Jobs
 ```bash
-# Start Sidekiq worker
-bundle exec sidekiq
+# Start Solid Queue worker
+bundle exec rails solid_queue:start
 
-# Monitor Sidekiq queue
-bundle exec sidekiq -q default
+# Monitor job queue (in console)
+SolidQueue::Job.count
+SolidQueue::Job.where(finished_at: nil).count
 
-# Clear Sidekiq queue (in console)
-Sidekiq::Queue.new.clear
+# Clear job queue (in console)
+SolidQueue::Job.destroy_all
 ```
 
 ## Architecture
@@ -214,7 +215,7 @@ This is a Rails 8.0 API-only application designed as a WhatsApp webhook ingestio
 - Validates signatures and queues processing jobs
 
 **Background Processing**
-- Uses Sidekiq with Redis for job queuing
+- Uses Solid Queue (database-backed) for job queuing
 - `Whatsapp::IngestWebhookJob`: Processes incoming webhook payloads
 - `Media::DownloadJob`: Downloads media files from WhatsApp to S3
 
@@ -259,11 +260,10 @@ This is a Rails 8.0 API-only application designed as a WhatsApp webhook ingestio
 - `S3_BUCKET`: S3 bucket for media storage
 - `S3_REGION`: AWS region for S3
 - `DATABASE_URL`: PostgreSQL connection (production)
-- `REDIS_URL`: Redis connection for Sidekiq
 
 **Storage**: Uses Active Storage with S3 for media files
 
-**Queue System**: Solid Queue (database-backed) and Sidekiq (Redis-backed) configured
+**Queue System**: Solid Queue (database-backed) for reliable job processing
 
 ### Key Design Decisions
 
