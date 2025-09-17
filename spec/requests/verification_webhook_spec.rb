@@ -1,5 +1,4 @@
 require 'rails_helper'
-require 'sidekiq/testing'
 
 RSpec.describe "Webhooks", type: :request do
   describe "GET /ingest" do

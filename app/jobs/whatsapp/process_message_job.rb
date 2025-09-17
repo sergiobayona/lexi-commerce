@@ -11,5 +11,9 @@ class Whatsapp::ProcessMessageJob < ApplicationJob
     else
       Whatsapp::Processors::BaseProcessor.new(value, msg).call # store raw, mark unknown
     end
+
+    # After basic processing, evaluate the user's intent.
+    # This is kept side-effect-free (no outbound send) and can later trigger follow-ups.
+    Whatsapp::Intent::Evaluator.new(value: value, msg: msg).call
   end
 end
