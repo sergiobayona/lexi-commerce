@@ -28,31 +28,6 @@ RSpec.describe Whatsapp::Intent::Evaluator do
       expect(evaluator.call).to be_nil
     end
 
-    it "logs evaluated intent details" do
-      build_message!(provider_id: "wamid.1", body: "hi there", timestamp: now)
-
-      logged = nil
-      allow(Rails.logger).to receive(:info) do |payload|
-        begin
-          parsed = JSON.parse(payload)
-          logged = parsed if parsed["at"] == "intent.evaluated"
-        rescue JSON::ParserError
-          # ignore non-JSON logs
-        end
-      end
-
-      result = described_class.new(value: {}, msg: { "id" => "wamid.1" }).call
-
-      expect(result[:label]).to eq(:onboard_greeting)
-      expect(logged).to be_present
-      expect(logged["provider_message_id"]).to eq("wamid.1")
-      expect(logged["contact_id"]).to eq(contact.id)
-      expect(logged["first_interaction"]).to be true
-      expect(logged["intent_label"]).to eq("onboard_greeting")
-      expect(logged["confidence"]).to be_a(Float)
-      expect(logged["rationale"]).to be_a(String)
-    end
-
     it "rescues and logs errors, returning nil" do
       allow(WaMessage).to receive(:find_by).and_raise(StandardError.new("boom"))
 
@@ -198,6 +173,14 @@ RSpec.describe Whatsapp::Intent::Evaluator do
           expect(result).to include(label: :onboard_greeting, confidence: 0.8),
             "Expected '#{greeting}' to be recognized as onboard_greeting"
         end
+      end
+
+      it "recognizes 'hola' as a greeting" do
+        build_message!(provider_id: "wamid.todo_bien", body: "Hola", timestamp: now)
+
+        result = described_class.new(value: {}, msg: { "id" => "wamid.todo_bien" }).call
+        expect(result).to include(label: :onboard_greeting, confidence: 0.8),
+          "Expected 'hola' to be recognized as onboard_greeting"
       end
 
       it "recognizes formal Spanish greetings" do

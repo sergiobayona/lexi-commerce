@@ -14,19 +14,6 @@ module Whatsapp
         first_time = first_interaction?(contact, message)
 
         intent = infer_intent(message, first_time: first_time)
-
-        Rails.logger.info(
-          {
-            at: "intent.evaluated",
-            provider_message_id: message.provider_message_id,
-            contact_id: contact&.id,
-            first_interaction: first_time,
-            intent_label: intent[:label],
-            confidence: intent[:confidence],
-            rationale: intent[:rationale]
-          }.to_json
-        )
-
         intent
       rescue => e
         Rails.logger.error({ at: "intent.error", error: e.class.name, message: e.message }.to_json)
