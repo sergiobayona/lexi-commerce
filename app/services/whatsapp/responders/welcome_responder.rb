@@ -1,75 +1,62 @@
+# frozen_string_literal: true
+
 module Whatsapp
   module Responders
     class WelcomeResponder
-      def initialize(value, msg)
-        @value = value
-        @msg = msg
+      include BaseResponder
+
+      def initialize(contact:, business_number:)
+        @contact = contact
+        @business_number = business_number
       end
 
-      def call
-        # Find the message and contact for context
-        message = WaMessage.find_by(provider_message_id: @msg["id"])
-        return unless message
+      # Sends a friendly welcome message to the contact and records it.
+      #
+      # Options:
+      # - greeting_text: the original greeting text to determine language
+      # - text: override default welcome text
+      # - preview_url: whether WhatsApp should auto-preview URLs
+      #
+      # Returns the created WaMessage record.
+      def call(greeting_text: nil, text: nil, preview_url: false)
+        raise ArgumentError, "contact not found" unless @contact
+        raise ArgumentError, "business_number not found" unless @business_number
 
-        contact = message.wa_contact
-        business_number = message.wa_business_number
+        name = @contact&.profile_name
 
-        # Determine the appropriate welcome message based on language context
-        welcome_text = determine_welcome_message(message.body_text)
+        message_text = determine_welcome_message(greeting_text, name)
 
-        # Log the welcome response attempt
-        Rails.logger.info({
-          "at" => "welcome_responder.sending",
-          "provider_message_id" => message.provider_message_id,
-          "contact_wa_id" => contact&.wa_id,
-          "welcome_language" => detect_language(message.body_text).to_s,
-          "message_preview" => welcome_text[0..50]
-        })
+        api_res = send_text!(
+          to: @contact.wa_id,
+          body: message_text,
+          business_number: @business_number,
+          preview_url: preview_url
+        )
 
-        # In a real implementation, this would send the message via WhatsApp API
-        # For now, we'll just log what would be sent
-        Rails.logger.info({
-          "at" => "welcome_responder.would_send",
-          "to" => contact&.wa_id,
-          "from" => business_number&.display_phone_number,
-          "message" => welcome_text
-        })
-
-        # TODO: Implement actual WhatsApp API sending
-        # send_whatsapp_message(
-        #   to: contact.wa_id,
-        #   message: welcome_text,
-        #   business_number: business_number
-        # )
-
-        welcome_text
-      rescue => e
-        Rails.logger.error({
-          at: "welcome_responder.error",
-          error: e.class.name,
-          message: e.message,
-          provider_message_id: @msg["id"]
-        }.to_json)
-        nil
+        provider_id = Array(api_res.dig("messages")).first&.dig("id")
+        record_outbound_message!(
+          wa_contact: @contact,
+          wa_business_number: @business_number,
+          body: message_text,
+          provider_message_id: provider_id,
+          raw: api_res.is_a?(Hash) ? api_res : { raw: api_res }
+        )
       end
 
       private
 
-      def determine_welcome_message(greeting_text)
+      def determine_welcome_message(greeting_text, name)
         language = detect_language(greeting_text)
 
         case language
         when :spanish
-          spanish_welcome_message
-        when :mixed
-          bilingual_welcome_message
+          spanish_welcome_message(name)
         else
-          english_welcome_message
+          english_welcome_message(name)
         end
       end
 
       def detect_language(text)
-        return :mixed if mixed_language_greeting?(text)
         return :spanish if spanish_greeting?(text)
         :english
       end
@@ -81,19 +68,9 @@ module Whatsapp
         spanish_patterns.any? { |pattern| text =~ pattern }
       end
 
-      def mixed_language_greeting?(text)
-        mixed_patterns = [
-          /hola.*how\s+are\s+you/i,
-          /hi.*c[óo]mo\s+est[aáà]s/i,
-          /hello.*qu[eé]\s+tal/i,
-          /hey.*hola/i
-        ]
-        mixed_patterns.any? { |pattern| text =~ pattern }
-      end
-
-      def spanish_welcome_message
-        <<~SPANISH
-          ¡Hola! 👋 ¡Bienvenido/a a Lexi!
+      def spanish_welcome_message(name)
+        <<~SPANISH.strip
+          ¡Hola #{name}! 👋 ¡Soy Lexi!
 
           Soy tu asistente de aprendizaje de inglés. Estoy aquí para ayudarte a practicar y mejorar tu pronunciación.
 
@@ -106,24 +83,9 @@ module Whatsapp
         SPANISH
       end
 
-      def bilingual_welcome_message
-        <<~BILINGUAL
-          ¡Hola! Hi! 👋 Welcome to Lexi!
-
-          I'm your English learning assistant / Soy tu asistente de aprendizaje de inglés.
-
-          📝 You can send me / Puedes enviarme:
-          • Voice messages to practice pronunciation / Mensajes de voz para practicar pronunciación
-          • Text to review grammar / Texto para revisar gramática
-          • Questions about English / Preguntas sobre inglés
-
-          What would you like to practice today? / ¿En qué te gustaría practicar hoy?
-        BILINGUAL
-      end
-
-      def english_welcome_message
-        <<~ENGLISH
-          Hello! 👋 Welcome to Lexi!
+      def english_welcome_message(name)
+        <<~ENGLISH.strip
+          Hello #{name}! 👋 I'm Lexi!
 
           I'm your English learning assistant. I'm here to help you practice and improve your pronunciation.
 
@@ -135,12 +97,6 @@ module Whatsapp
           What would you like to practice today?
         ENGLISH
       end
-
-      # TODO: Implement actual WhatsApp API integration
-      # def send_whatsapp_message(to:, message:, business_number:)
-      #   # Implementation would depend on WhatsApp Business API
-      #   # This would make an HTTP request to send the message
-      # end
     end
   end
 end
