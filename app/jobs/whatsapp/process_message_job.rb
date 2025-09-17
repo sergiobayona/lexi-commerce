@@ -12,8 +12,9 @@ class Whatsapp::ProcessMessageJob < ApplicationJob
       Whatsapp::Processors::BaseProcessor.new(value, msg).call # store raw, mark unknown
     end
 
-    # After basic processing, evaluate the user's intent and run follow-ups
-    # (delegated to a service object to keep the job thin and testable).
+    # After creating db records, do an initial (basic) evaluation
+    # of the user's intent and run follow-ups.
+    # We currently only handle th user's first message greeting intent.
     Whatsapp::Intent::Handler.new(value: value, msg: msg).call
   rescue => e
     Rails.logger.error({ at: "process_message.error", error: e.class.name, message: e.message }.to_json)
