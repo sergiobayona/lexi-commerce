@@ -34,7 +34,7 @@ class Whatsapp::ProcessMessageJob < ApplicationJob
 
     wa_contact = wa_message.wa_contact
     wa_business_number = wa_message.wa_business_number
-    wa_media = wa_message.wa_media.first
+    wa_media = wa_message.wa_media
 
     return unless wa_contact && wa_business_number && wa_media
 
@@ -56,7 +56,7 @@ class Whatsapp::ProcessMessageJob < ApplicationJob
     }
 
     idempotency_key = "audio_received:#{provider_message_id}"
-    Redis::StreamPublisher.new.publish(payload, idempotency_key: idempotency_key)
+    Stream::Publisher.new.publish(payload, idempotency_key: idempotency_key)
 
     Rails.logger.info({
       at: "audio_received.dispatched",

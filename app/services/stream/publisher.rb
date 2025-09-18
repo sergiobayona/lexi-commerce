@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-module Redis
-  class StreamPublisher
+module Stream
+  class Publisher
     class PublishError < StandardError; end
 
     def initialize(stream_name: nil, consumer_group: nil)
