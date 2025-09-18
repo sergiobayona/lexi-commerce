@@ -50,7 +50,10 @@ module Stream
     def duplicate_event?(redis, idempotency_key)
       # Simple check of recent messages (last 100)
       recent_messages = redis.xrevrange(@stream_name, "+", "-", count: 100)
+      return false if recent_messages.empty?
+
       recent_messages.any? do |_message_id, fields|
+        next false if fields.empty? || fields.length.odd?
         fields_hash = Hash[*fields]
         fields_hash["idempotency_key"] == idempotency_key
       end
