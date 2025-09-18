@@ -49,7 +49,8 @@ class Whatsapp::ProcessMessageJob < ApplicationJob
         provider_media_id: wa_media.provider_media_id,
         sha256: wa_media.sha256,
         mime_type: wa_media.mime_type,
-        bytes: wa_media.bytes
+        bytes: wa_media.bytes,
+        storage_url: wa_media.storage_url
       },
       business_number_id: wa_business_number.id,
       timestamp: wa_message.timestamp.iso8601

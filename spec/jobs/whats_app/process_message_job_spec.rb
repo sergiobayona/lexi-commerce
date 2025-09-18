@@ -76,7 +76,8 @@ RSpec.describe Whatsapp::ProcessMessageJob, type: :job do
           wa_media = WaMedia.create!(
             provider_media_id: "media.audio",
             sha256: "abc123",
-            mime_type: "audio/ogg"
+            mime_type: "audio/ogg",
+            storage_url: "https://s3.amazonaws.com/bucket/audio123.ogg"
           )
 
           WaMessageMedia.create!(
@@ -96,7 +97,8 @@ RSpec.describe Whatsapp::ProcessMessageJob, type: :job do
               provider_media_id: "media.audio",
               sha256: "abc123",
               mime_type: "audio/ogg",
-              bytes: nil
+              bytes: nil,
+              storage_url: "https://s3.amazonaws.com/bucket/audio123.ogg"
             },
             business_number_id: business_number.id,
             timestamp: wa_message.timestamp.iso8601
@@ -133,7 +135,8 @@ RSpec.describe Whatsapp::ProcessMessageJob, type: :job do
           wa_media = WaMedia.create!(
             provider_media_id: "media.audio",
             sha256: "abc123",
-            mime_type: "audio/ogg"
+            mime_type: "audio/ogg",
+            storage_url: "https://s3.amazonaws.com/bucket/audio123.ogg"
           )
 
           WaMessageMedia.create!(wa_message: wa_message, wa_media: wa_media, purpose: "primary")
@@ -222,7 +225,8 @@ RSpec.describe Whatsapp::ProcessMessageJob, type: :job do
           wa_media = WaMedia.create!(
             provider_media_id: "media.audio",
             sha256: "abc123",
-            mime_type: "audio/ogg"
+            mime_type: "audio/ogg",
+            storage_url: "https://s3.amazonaws.com/bucket/audio123.ogg"
           )
 
           WaMessageMedia.create!(wa_message: wa_message, wa_media: wa_media, purpose: "primary")
