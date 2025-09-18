@@ -10,26 +10,9 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_09_18_155433) do
+ActiveRecord::Schema[8.0].define(version: 2025_09_18_162606) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
-
-  create_table "outbox_events", force: :cascade do |t|
-    t.string "event_type", null: false
-    t.jsonb "payload", default: {}, null: false
-    t.string "status", default: "pending", null: false
-    t.string "idempotency_key", null: false
-    t.datetime "processed_at"
-    t.integer "retry_count", default: 0, null: false
-    t.text "last_error"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["created_at", "status"], name: "index_outbox_events_on_created_at_and_status"
-    t.index ["event_type"], name: "index_outbox_events_on_event_type"
-    t.index ["idempotency_key"], name: "index_outbox_events_on_idempotency_key", unique: true
-    t.index ["payload"], name: "index_outbox_events_on_payload", using: :gin
-    t.index ["status"], name: "index_outbox_events_on_status"
-  end
 
   create_table "solid_queue_blocked_executions", force: :cascade do |t|
     t.bigint "job_id", null: false

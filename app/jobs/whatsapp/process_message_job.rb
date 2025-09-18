@@ -38,12 +38,30 @@ class Whatsapp::ProcessMessageJob < ApplicationJob
 
     return unless wa_contact && wa_business_number && wa_media
 
-    Outbox::Dispatcher.new.dispatch_audio_received_event(
-      wa_message: wa_message,
-      wa_contact: wa_contact,
-      wa_media: wa_media,
-      business_number: wa_business_number
-    )
+    # Build payload and publish directly
+    payload = {
+      provider: "whatsapp",
+      provider_message_id: wa_message.provider_message_id,
+      wa_message_id: wa_message.id,
+      wa_contact_id: wa_contact.id,
+      user_e164: wa_contact.wa_id,
+      media: {
+        provider_media_id: wa_media.provider_media_id,
+        sha256: wa_media.sha256,
+        mime_type: wa_media.mime_type,
+        bytes: wa_media.bytes
+      },
+      business_number_id: wa_business_number.id,
+      timestamp: wa_message.timestamp.iso8601
+    }
+
+    idempotency_key = "audio_received:#{provider_message_id}"
+    Redis::StreamPublisher.new.publish(payload, idempotency_key: idempotency_key)
+
+    Rails.logger.info({
+      at: "audio_received.dispatched",
+      provider_message_id: provider_message_id
+    }.to_json)
   rescue => e
     Rails.logger.error({
       at: "process_message.emit_audio_event_error",
