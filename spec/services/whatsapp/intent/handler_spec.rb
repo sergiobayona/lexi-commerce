@@ -72,8 +72,8 @@ RSpec.describe Whatsapp::Intent::Handler do
     end
   end
 
-  describe "returns evaluator result" do
-    it "returns the result from evaluator" do
+  describe "returns evaluator result and actions" do
+    it "returns the result from evaluator with actions taken" do
       result = { label: :onboard_greeting, confidence: 0.9 }
 
       expect(Whatsapp::Intent::Evaluator).to receive(:new).with(value: value, msg: msg).and_return(double(call: result))
@@ -84,7 +84,25 @@ RSpec.describe Whatsapp::Intent::Handler do
       allow(WaBusinessNumber).to receive(:find_by).and_return(business_number)
       allow_any_instance_of(Whatsapp::Responders::WelcomeResponder).to receive(:call)
 
-      expect(subject.call).to eq(result)
+      expected_response = {
+        intent_result: result,
+        actions: { welcome_message_sent: true }
+      }
+
+      expect(subject.call).to eq(expected_response)
+    end
+
+    it "returns false for welcome_message_sent when no greeting intent" do
+      result = { label: :other, confidence: 0.5 }
+
+      expect(Whatsapp::Intent::Evaluator).to receive(:new).with(value: value, msg: msg).and_return(double(call: result))
+
+      expected_response = {
+        intent_result: result,
+        actions: { welcome_message_sent: false }
+      }
+
+      expect(subject.call).to eq(expected_response)
     end
   end
 end

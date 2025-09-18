@@ -8,16 +8,21 @@ module Whatsapp
       end
 
       # Evaluate intent and run side-effecting follow-ups when appropriate.
-      # Returns the evaluator result for callers that want to inspect it.
+      # Returns a hash with the evaluator result and actions taken.
       def call
         result = Evaluator.new(value: @value, msg: @msg).call
+        actions_taken = { welcome_message_sent: false }
 
         # Direct intent handling - simple and clear
         if greeting_intent?(result)
           handle_greeting_intent
+          actions_taken[:welcome_message_sent] = true
         end
 
-        result
+        {
+          intent_result: result,
+          actions: actions_taken
+        }
       end
 
       private

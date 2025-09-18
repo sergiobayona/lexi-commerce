@@ -8,7 +8,9 @@ gem "pg", "~> 1.1"
 gem "puma", ">= 5.0"
 # Build JSON APIs with ease [https://github.com/rails/jbuilder]
 # gem "jbuilder"
-# Redis and Sidekiq removed - using Solid Queue instead
+# Redis for outbox event streaming to lexi-speech-worker
+gem "redis", "~> 5.0"
+gem "connection_pool"
 gem "aws-sdk-s3" # or "google-cloud-storage"
 gem "rack-attack"
 gem "sentry-ruby"
