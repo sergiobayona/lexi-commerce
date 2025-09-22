@@ -113,6 +113,45 @@ module Whatsapp
         { bytes: bytes_count, sha256: computed }
       end
 
+      # Stream a short-lived media URL to local downloads folder.
+      # Returns { path:, bytes:, sha256: }
+      def stream_to_local(url, filename, expected_sha256: nil, downloads_dir: nil)
+        downloads_dir ||= Rails.root.join("downloads")
+        FileUtils.mkdir_p(downloads_dir)
+
+        file_path = File.join(downloads_dir, filename)
+        Rails.logger.info("Starting media download from WhatsApp to local file: #{file_path}")
+
+        bytes_count = 0
+        sha = Digest::SHA256.new
+
+        File.open(file_path, "wb") do |file|
+          begin
+            download(url) do |chunk|
+              file.write(chunk)
+              sha.update(chunk)
+              bytes_count += chunk.bytesize
+            end
+          rescue Error => e
+            Rails.logger.error("Failed to download media from WhatsApp: #{e.message}")
+            Rails.logger.error("Status: #{e.status}, Body: #{e.body&.to_s&.[](0..500)}")
+            # Clean up partial file on error
+            File.delete(file_path) if File.exist?(file_path)
+            raise
+          end
+        end
+
+        computed = sha.hexdigest
+        if expected_sha256.present? && expected_sha256.downcase != computed.downcase
+          # Delete the downloaded file if integrity check fails
+          File.delete(file_path) if File.exist?(file_path)
+          raise Error, "SHA256 mismatch (expected #{expected_sha256}, got #{computed})"
+        end
+
+        Rails.logger.info("Successfully downloaded media to local file: #{file_path} (#{bytes_count} bytes, SHA256: #{computed})")
+        { path: file_path, bytes: bytes_count, sha256: computed }
+      end
+
       # Convenience: do everything in one call starting from media_id.
       # Returns { key:, bytes:, sha256:, mime_type:, filename: }
       def download_to_s3_by_media_id(media_id, key_prefix: "wa/", max_retries: 2)
@@ -124,6 +163,32 @@ module Whatsapp
 
           res = stream_to_s3(url, key, content_type: mime_type)
           { key:, bytes: res[:bytes], sha256: res[:sha256], mime_type:, filename: filename }
+        rescue Error => e
+          # Retry if URL expired (401/403 errors)
+          if (e.status == 401 || e.status == 403) && retries < max_retries
+            retries += 1
+            Rails.logger.warn("Media URL expired or unauthorized (attempt #{retries}/#{max_retries}), fetching new URL for media_id: #{media_id}")
+            sleep(0.5 * retries) # Brief delay before retry
+            retry
+          else
+            raise
+          end
+        end
+      end
+
+      # Convenience: download to local file system starting from media_id.
+      # Returns { path:, bytes:, sha256:, mime_type:, filename: }
+      def download_to_local_by_media_id(media_id, downloads_dir: nil, max_retries: 2)
+        retries = 0
+        begin
+          url, filename, mime_type, _size = lookup(media_id)
+          ext = extension_for(mime_type)
+
+          # Use original filename if available, otherwise use media_id + extension
+          local_filename = filename.presence || "#{media_id}#{ext}"
+
+          res = stream_to_local(url, local_filename, downloads_dir: downloads_dir)
+          { path: res[:path], bytes: res[:bytes], sha256: res[:sha256], mime_type:, filename: local_filename }
         rescue Error => e
           # Retry if URL expired (401/403 errors)
           if (e.status == 401 || e.status == 403) && retries < max_retries
