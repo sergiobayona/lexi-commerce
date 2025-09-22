@@ -23,20 +23,12 @@ default: &default
 development:
   <<: *default
   database: lexi_ingestion_api_development
-
-  # The specified database role being used to connect to PostgreSQL.
-  # To create additional roles in PostgreSQL see `$ createuser --help`.
-  # When left blank, PostgreSQL will use the default role. This is
-  # the same name as the operating system user running Rails.
-  #username: lexi_ingestion_api
-
-  # The password associated with the PostgreSQL role (username).
+  # Use TCP connection instead of Unix socket to avoid Postgres.app trust auth issues
+  host: localhost
+  # Explicitly set username (defaults to your system username)
+  username: <%= ENV['USER'] %>
+  # No password needed for local development
   #password:
-
-  # Connect on a TCP socket. Omitted by default since the client uses a
-  # domain socket that doesn't need configuration. Windows does not have
-  # domain sockets, so uncomment these lines.
-  #host: localhost
 
   # The TCP port the server listens on. Defaults to 5432.
   # If your server runs on a different port number, change accordingly.
@@ -57,6 +49,8 @@ development:
 test:
   <<: *default
   database: lexi_ingestion_api_test
+  host: localhost
+  username: <%= ENV['USER'] %>
 
 # As with config/credentials.yml, you never want to store sensitive information,
 # like your database password, in your source code. If your source code is

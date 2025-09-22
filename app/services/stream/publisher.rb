@@ -22,6 +22,9 @@ module Stream
 
         # Prepare and publish event
         payload = prepare_payload(event_data, idempotency_key)
+        puts "************************************************"
+        puts payload
+        puts "************************************************"
         message_id = redis.xadd(@stream_name, payload)
 
         # Ensure consumer group exists

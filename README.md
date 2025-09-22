@@ -1,3 +1,9 @@
+Lexi Ingestion API
+
+run with grok to expose the endpoint:
+
+ngrok http 3000
+
 # Execution Path: WhatsApp Webhook Ingestion
 
 This Rails API ingests WhatsApp Business Platform webhooks, persists normalized records, and (for media) downloads files to S3. Below is the end‑to‑end execution path for the main inbound message flow.
