@@ -1,3 +1,4 @@
+        require "whisper"
 module Whatsapp
   module Processors
     class AudioProcessor < BaseProcessor
@@ -42,7 +43,25 @@ module Whatsapp
           }, unique_by: :index_wa_referrals_on_wa_message_id)
         end
 
-        Media::DownloadJob.perform_later(media.id)
+        file_path = Media::Downloader.call(media.id)
+
+        # Convert OGG to WAV format for Whisper transcription
+        wav_path = Media::AudioConverter.to_wav(file_path)
+
+        whisper = Whisper::Context.new("base")
+
+        params = Whisper::Params.new(
+          translate: false,
+          print_timestamps: false
+        )
+
+        @transcription = ""
+
+        whisper.transcribe(wav_path, params) do |whole_text|
+          @transcription = whole_text
+        end
+
+        msg_rec.update!(body_text: @transcription)
       end
     end
   end
