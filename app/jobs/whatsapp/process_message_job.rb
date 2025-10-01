@@ -16,6 +16,10 @@ class Whatsapp::ProcessMessageJob < ApplicationJob
       Whatsapp::Processors::TextProcessor.new(value, msg).call
     when "audio"
       Whatsapp::Processors::AudioProcessor.new(value, msg).call
+    when "button"
+      Whatsapp::Processors::ButtonProcessor.new(value, msg).call
+    when "contacts"
+      Whatsapp::Processors::ContactProcessor.new(value, msg).call
     else
       Whatsapp::Processors::BaseProcessor.new(value, msg).call # store raw, mark unknown
     end
