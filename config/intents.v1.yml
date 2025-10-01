@@ -1,0 +1,18 @@
+version: 1
+top_level:
+  - id: faq
+    description: "Hours, pricing, location, policies, general info." 
+  - id: booking
+    description: "Request/change/cancel an appointment or reservation."
+  - id: order
+    description: "New order, add/remove items, availability."
+  - id: support
+    description: "Issue/complaint/warranty and post-purchase help."
+  - id: payment_billing
+    description: "Invoices, refunds, receipts, payment links."
+  - id: greeting_smalltalk
+    description: "Greetings, thanks, chit-chat."
+  - id: handoff
+    description: "Explicit request for a human/agent."
+  - id: other
+    description: "Abstain/unknown."

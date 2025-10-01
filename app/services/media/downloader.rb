@@ -23,7 +23,7 @@ module Media
       file_path
     rescue => e
       Rails.logger.error("Failed to download media #{@media_id}: #{e.class} - #{e.message}")
-      media.update!(download_status: "failed", last_error: e.message[0..1000]) rescue nil
+      media.update!(download_status: "failed", last_error: e.message[0...1000]) rescue nil
       raise
     end
 
