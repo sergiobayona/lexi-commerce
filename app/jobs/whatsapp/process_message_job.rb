@@ -20,16 +20,6 @@ class Whatsapp::ProcessMessageJob < ApplicationJob
       Whatsapp::Processors::BaseProcessor.new(value, msg).call # store raw, mark unknown
     end
 
-    # After creating db records, do an initial (basic) evaluation
-    # of the user's intent and run follow-ups.
-    # We currently only handle the user's first message greeting intent.
-    handler_result = Whatsapp::Intent::Handler.new(value: value, msg: msg).call
-
-    # If this is an audio message and no welcome message was sent,
-    # emit outbox event for speech processing
-    if type == "audio" && !handler_result.dig(:actions, :welcome_message_sent)
-      emit_audio_received_event(msg["id"], value)
-    end
   rescue => e
     Rails.logger.error({ at: "process_message.error", error: e.class.name, message: e.message }.to_json)
   end
