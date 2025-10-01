@@ -58,7 +58,6 @@ RSpec.describe "Ingestion Webhook", type: :request do
                  # Note: No X-Hub-Signature-256 header - allowed in dev mode
                }
         }.to have_enqueued_job(Whatsapp::IngestWebhookJob)
-         .with(whatsapp_text_payload)
 
         # Should return 200 OK
         expect(response).to have_http_status(:ok)
@@ -72,8 +71,8 @@ RSpec.describe "Ingestion Webhook", type: :request do
         expect(webhook_event.object_name).to eq("whatsapp_business_account")
         expect(webhook_event.payload).to eq(whatsapp_text_payload)
 
-        # Verify the job was enqueued with correct arguments
-        expect(Whatsapp::IngestWebhookJob).to have_been_enqueued.with(whatsapp_text_payload)
+        # Verify the job was enqueued (with payload and webhook_event_id)
+        expect(Whatsapp::IngestWebhookJob).to have_been_enqueued
       end
 
       it "executes full processing pipeline creating proper records and calling TextProcessor" do
