@@ -20,6 +20,8 @@ class Whatsapp::ProcessMessageJob < ApplicationJob
       Whatsapp::Processors::ButtonProcessor.new(value, msg).call
     when "contacts"
       Whatsapp::Processors::ContactProcessor.new(value, msg).call
+    when "document"
+      Whatsapp::Processors::DocumentProcessor.new(value, msg).call
     else
       Whatsapp::Processors::BaseProcessor.new(value, msg).call # store raw, mark unknown
     end
