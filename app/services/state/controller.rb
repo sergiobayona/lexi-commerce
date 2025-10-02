@@ -46,11 +46,17 @@ module State
       begin
         # 3. Load or create session
         state = load_or_create_session(turn)
+        is_new_session = @redis.get(session_key).nil?
+
+        # 3a. For new sessions, persist initial state before any modifications
+        if is_new_session
+          @redis.setex(session_key, DEFAULT_SESSION_TTL, state.to_json)
+        end
 
         # 4. Validate state
         @validator.call!(state)
 
-        # 5. Append inbound turn to dialogue history
+        # 5. Append inbound turn to dialogue history (in-memory only for routing)
         append_turn_to_dialogue(state, turn)
 
         # 6. Route to determine lane and intent
@@ -74,11 +80,26 @@ module State
           intent: route_decision.intent
         )
 
-        # 10. Apply state patch with optimistic locking
+        # 10. Build complete patch including dialogue update
+        complete_patch = {
+          "dialogue" => state["dialogue"]
+        }
+        # Deep merge agent's state patch (if any) to preserve dialogue.turns
+        if agent_response.state_patch
+          agent_response.state_patch.each do |key, value|
+            if complete_patch[key].is_a?(Hash) && value.is_a?(Hash)
+              complete_patch[key] = complete_patch[key].merge(value)
+            else
+              complete_patch[key] = value
+            end
+          end
+        end
+
+        # 11. Apply complete state patch with optimistic locking
         patch_success = apply_state_patch(
           session_key: session_key,
           current_state: state,
-          patch: agent_response.state_patch
+          patch: complete_patch
         )
 
         unless patch_success
@@ -95,6 +116,8 @@ module State
 
         # 11. Handle lane handoff if requested
         if agent_response.handoff
+          # Reload state to get updated version after patch
+          state = load_or_create_session(turn)
           handle_lane_handoff(
             session_key: session_key,
             state: state,
@@ -154,7 +177,7 @@ module State
     # ============================================
 
     def already_processed?(message_id)
-      @redis.exists?(idempotency_key(message_id)) == 1
+      @redis.exists?(idempotency_key(message_id))
     end
 
     def mark_processed(message_id)
@@ -265,12 +288,12 @@ module State
     # ============================================
 
     def apply_state_patch(session_key:, current_state:, patch:)
-      return true if patch.nil? || patch.empty?
-
+      # Always save state to persist dialogue updates and increment version
+      # Pass empty hash if no agent patch
       @patcher.patch!(
         key: session_key,
         expected_version: current_state["version"],
-        patch: patch,
+        patch: patch || {},
         ttl_seconds: DEFAULT_SESSION_TTL
       )
     end

@@ -1,8 +1,6 @@
-# =========================
-# RouterDecision data type
-# =========================
-RouterDecision = Data.define(:lane, :intent, :confidence, :sticky_seconds, :reasons)
-# lane: "info" | "commerce" | "support"
+# frozen_string_literal: true
+
+require_relative "router_decision"
 
 # ======================================
 # Minimal, swappable LLM client interface
