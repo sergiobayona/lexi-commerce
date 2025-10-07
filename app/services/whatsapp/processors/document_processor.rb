@@ -47,7 +47,7 @@ module Whatsapp
         # Queue media download
         Media::Downloader.call(media.id)
 
-        msg_rec.body_text
+        msg_rec
       end
     end
   end

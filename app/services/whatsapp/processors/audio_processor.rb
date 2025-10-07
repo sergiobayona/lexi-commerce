@@ -62,7 +62,7 @@ module Whatsapp
         end
 
         msg_rec.update!(body_text: @transcription)
-        msg_rec.body_text
+        msg_rec
       end
     end
   end

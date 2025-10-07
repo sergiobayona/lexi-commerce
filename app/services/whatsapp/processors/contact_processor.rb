@@ -48,7 +48,7 @@ module Whatsapp
           )
         end
 
-        msg_rec.body_text
+        msg_rec
       end
     end
   end

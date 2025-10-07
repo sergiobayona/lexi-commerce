@@ -1,22 +1,74 @@
 # frozen_string_literal: true
 
 require_relative "router_decision"
+require_relative "schemas/router_decision_schema"
+require "ruby_llm"
 
 # ======================================
-# Minimal, swappable LLM client interface
+# RubyLLM-backed LLM client for intent routing
 # ======================================
 class LLMClient
-  # Stubbed client — replace with your real OpenAI/Bedrock/Groq wrapper
-  def call(system:, messages:, tools:, tool_choice: "required", timeout: 0.9)
-    # Return a fake tool call so you can test plumbing without an API key.
+  # Configuration for LLM provider and model
+  # Defaults to OpenAI GPT-4o for best structured output support
+  PROVIDER = ENV.fetch("LLM_PROVIDER", "openai").to_sym
+  MODEL = ENV.fetch("LLM_MODEL", "gpt-4o-mini")
+  TIMEOUT = ENV.fetch("LLM_TIMEOUT", "0.9").to_f
+  TEMPERATURE = ENV.fetch("LLM_TEMPERATURE", "0.3").to_f
+
+  # Feature flag to enable/disable LLM routing
+  # Falls back to rule-based routing when disabled
+  ENABLED = ENV.fetch("LLM_ROUTING_ENABLED", "false") == "true"
+
+  def initialize
+    @client = RubyLLM.chat(provider: PROVIDER, model: MODEL) if ENABLED
+  end
+
+  # Call LLM with structured output schema for intent routing
+  #
+  # @param system [String] System prompt for routing instructions
+  # @param messages [Array<Hash>] Conversation messages
+  # @param tools [Array] Unused (for backward compatibility)
+  # @param tool_choice [String] Unused (for backward compatibility)
+  # @param timeout [Float] Request timeout in seconds
+  #
+  # @return [Hash] Arguments hash matching RouterDecisionSchema structure
+  def call(system:, messages:, tools: nil, tool_choice: nil, timeout: TIMEOUT)
+    unless ENABLED
+      return fallback_response
+    end
+
+    # Convert messages to simple prompt format
+    # RubyLLM handles system prompts internally
+    user_messages = messages.select { |m| m[:role] == "user" }
+                           .map { |m| m[:content] }
+                           .join("\n")
+
+    prompt = "#{system}\n\n#{user_messages}"
+
+    # Request structured output using schema
+    response = @client
+      .with_schema(Schemas::RouterDecisionSchema)
+      .with_options(temperature: TEMPERATURE, timeout: timeout)
+      .ask(prompt)
+
+    # RubyLLM returns the parsed hash directly
+    { "arguments" => response }
+  rescue StandardError => e
+    Rails.logger.error("LLM routing failed: #{e.class} - #{e.message}")
+    { "arguments" => fallback_response["arguments"] }
+  end
+
+  private
+
+  # Fallback to rule-based routing when LLM is disabled or fails
+  def fallback_response
     {
-      "tool" => "route",
       "arguments" => {
-        "lane"            => "commerce",
-        "intent"          => "start_order",
-        "confidence"      => 0.86,
-        "sticky_seconds"  => 120,
-        "reasoning"       => [ "user asked to order", "commerce keywords present" ]
+        "lane" => "info",
+        "intent" => "general_info",
+        "confidence" => 0.5,
+        "sticky_seconds" => 60,
+        "reasoning" => [ "LLM routing disabled or failed, using fallback" ]
       }
     }
   end

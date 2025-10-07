@@ -41,14 +41,22 @@ Orchestrates conversation turns with:
 **Location**: `app/services/intent_router.rb`
 
 Determines which agent should handle a message:
-- Uses LLM for intent classification (future)
-- Returns: lane, intent, confidence, sticky_seconds
+- **LLM-Powered Intent Classification** using RubyLLM with structured output
+- Returns: lane, intent, confidence, sticky_seconds, reasoning
 - Sticky sessions prevent ping-pong between lanes
+- Graceful fallback to rule-based routing when LLM disabled or fails
 
 **Lanes:**
 - `info` - General information, FAQs, business hours
 - `commerce` - Shopping, orders, payments
 - `support` - Customer service, issues, escalation
+
+**LLM Integration:**
+- Uses RubyLLM gem with structured output via `RouterDecisionSchema`
+- Supports OpenAI (GPT-4o/GPT-4o-mini), Gemini (1.5 Pro/Flash), Anthropic (limited)
+- Configurable provider, model, temperature, and timeout
+- Feature flag for enabling/disabling LLM routing
+- Automatic error handling with fallback responses
 
 ### Agents
 **Location**: `app/services/agents/`
@@ -105,23 +113,34 @@ Session state stored in Redis with:
 ### What's Implemented
 ✅ Complete orchestration infrastructure
 ✅ State management with Redis
-✅ Intent routing (stubbed)
+✅ **LLM-powered intent routing with RubyLLM**
+✅ **Structured output via RouterDecisionSchema**
+✅ **Multi-provider support (OpenAI, Gemini, Anthropic)**
+✅ **Graceful fallback for LLM failures**
 ✅ InfoAgent with basic responses
 ✅ Turn construction from WaMessage
 ✅ Feature flag for safe activation
 ✅ Comprehensive logging
+✅ Full test coverage for LLM integration
 
 ### What's NOT Active
 ❌ Actual response sending (logged only)
-❌ LLM-based intent routing (uses defaults)
+❌ LLM routing feature flag (disabled by default)
 ❌ Commerce/Support functionality
 ❌ Real WhatsApp message sending
 
 ### Enabling Orchestration
 
-**1. Set environment variable:**
+**1. Set environment variables:**
 ```bash
+# Enable orchestration system
 export ENABLE_ORCHESTRATION=true
+
+# Enable LLM-powered routing (optional)
+export LLM_ROUTING_ENABLED=true
+export LLM_PROVIDER=openai
+export LLM_MODEL=gpt-4o-mini
+export OPENAI_API_KEY=your_api_key_here
 ```
 
 **2. Restart workers:**
@@ -132,6 +151,58 @@ mise run worker  # or your worker restart command
 **3. Monitor logs:**
 ```bash
 tail -f log/development.log | grep orchestrat
+```
+
+### Enabling LLM Intent Routing
+
+**Prerequisites:**
+- Sign up for an LLM provider account (OpenAI recommended)
+- Get API key from provider dashboard
+- Add API key to `.env` file
+
+**Recommended Configuration:**
+```bash
+# .env
+LLM_ROUTING_ENABLED=true
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4o-mini      # Fast and cost-effective
+LLM_TIMEOUT=0.9            # Sub-second response
+LLM_TEMPERATURE=0.3        # Deterministic routing
+
+# OpenAI API Key
+OPENAI_API_KEY=sk-...your-key-here
+```
+
+**Alternative Providers:**
+
+*Gemini (Google AI):*
+```bash
+LLM_PROVIDER=gemini
+LLM_MODEL=gemini-1.5-flash
+GOOGLE_AI_API_KEY=your_google_ai_key
+```
+
+*Anthropic (limited structured output support):*
+```bash
+LLM_PROVIDER=anthropic
+LLM_MODEL=claude-3-5-sonnet-20241022
+ANTHROPIC_API_KEY=your_anthropic_key
+```
+
+**Cost Estimation (OpenAI GPT-4o-mini):**
+- ~100 tokens per routing decision
+- $0.150 per 1M input tokens
+- Approximately 10,000 routing decisions = $0.15
+
+**Testing LLM Routing:**
+```ruby
+# Rails console
+client = LLMClient.new
+result = client.call(
+  system: "Route this message",
+  messages: [{ role: "user", content: "I want to order pizza" }]
+)
+# => { "arguments" => { "lane" => "commerce", "intent" => "start_order", ... } }
 ```
 
 **Expected log output:**
@@ -180,6 +251,14 @@ grep "orchestrate_turn" log/development.log
 |----------|---------|-------------|
 | `ENABLE_ORCHESTRATION` | `false` | Enable conversation orchestration |
 | `REDIS_URL` | `redis://localhost:6379/1` | Redis connection for state |
+| `LLM_ROUTING_ENABLED` | `false` | Enable LLM-powered intent routing |
+| `LLM_PROVIDER` | `openai` | LLM provider (openai, anthropic, gemini) |
+| `LLM_MODEL` | `gpt-4o-mini` | LLM model to use |
+| `LLM_TIMEOUT` | `0.9` | LLM request timeout in seconds |
+| `LLM_TEMPERATURE` | `0.3` | LLM temperature (0.0-1.0) |
+| `OPENAI_API_KEY` | - | OpenAI API key (required when provider=openai) |
+| `ANTHROPIC_API_KEY` | - | Anthropic API key (required when provider=anthropic) |
+| `GOOGLE_AI_API_KEY` | - | Google AI API key (required when provider=gemini) |
 
 ### Redis Keys
 
@@ -269,10 +348,12 @@ grep "lock" log/development.log | grep "failed"
    - Connect to WhatsApp Business API
    - Handle rate limiting
 
-2. **LLM Integration**
-   - Connect IntentRouter to OpenAI/Anthropic
-   - Fine-tune routing prompts
-   - Monitor routing accuracy
+2. ~~**LLM Integration**~~ ✅ **COMPLETED**
+   - ✅ RubyLLM integration with structured output
+   - ✅ Multi-provider support (OpenAI, Gemini, Anthropic)
+   - ✅ Graceful fallback and error handling
+   - 🔄 Fine-tune routing prompts for better accuracy
+   - 🔄 Monitor routing accuracy metrics
 
 3. **Commerce Agent**
    - Shopping cart functionality
@@ -283,6 +364,28 @@ grep "lock" log/development.log | grep "failed"
    - Ticket creation
    - FAQ database
    - Human handoff workflow
+
+### LLM Routing Monitoring
+
+**Key Metrics to Track:**
+- Routing accuracy (lane selection correctness)
+- LLM response times and latency percentiles
+- Fallback rate (LLM failures)
+- Confidence score distribution
+- Cost per routing decision
+
+**Logging Enhancements:**
+```ruby
+# Add to IntentRouter after LLM call
+Rails.logger.info({
+  at: "intent_router.llm_decision",
+  lane: decision.lane,
+  intent: decision.intent,
+  confidence: decision.confidence,
+  reasoning: decision.reasons,
+  llm_enabled: LLMClient::ENABLED
+})
+```
 
 ## Development
 
