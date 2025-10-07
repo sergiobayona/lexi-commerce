@@ -18,10 +18,20 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
   end
 
   let(:redis) { Redis.new(url: ENV.fetch("REDIS_URL", "redis://localhost:6379/0")) }
+  let(:mock_router) { instance_double(IntentRouter) }
+  let(:mock_llm_client) { double("RubyLLM::Client") }
 
   before do
     # Clean Redis before each test
     redis.flushdb
+
+    # Stub RubyLLM to prevent API calls in tests
+    allow(RubyLLM).to receive(:chat).and_return(mock_llm_client)
+    allow(IntentRouter).to receive(:new).and_return(mock_router)
+    allow(mock_router).to receive(:route).and_return(
+      RouterDecision.new("info", "general_info", 0.9, 0, [ "default routing" ])
+    )
+    allow(mock_router).to receive(:update_sticky!)
   end
 
   after do
@@ -32,18 +42,18 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
     context "with valid inbound text message" do
       it "processes the turn successfully" do
         expect {
-          described_class.perform_now(wa_message)
+          described_class.new.perform(wa_message)
         }.not_to raise_error
       end
 
       it "marks message as orchestrated" do
-        described_class.perform_now(wa_message)
+        described_class.new.perform(wa_message)
 
         expect(redis.exists?("orchestrated:#{wa_message.provider_message_id}")).to be true
       end
 
       it "creates session state in Redis" do
-        described_class.perform_now(wa_message)
+        described_class.new.perform(wa_message)
 
         session_key = "session:#{wa_business_number.phone_number_id}:#{wa_contact.wa_id}"
         expect(redis.exists?(session_key)).to be true
@@ -55,7 +65,7 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
       end
 
       it "appends turn to dialogue history" do
-        described_class.perform_now(wa_message)
+        described_class.new.perform(wa_message)
 
         session_key = "session:#{wa_business_number.phone_number_id}:#{wa_contact.wa_id}"
         state = JSON.parse(redis.get(session_key))
@@ -73,7 +83,7 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
       it "logs orchestration completion" do
         allow(Rails.logger).to receive(:info).and_call_original
 
-        described_class.perform_now(wa_message)
+        described_class.new.perform(wa_message)
 
         expect(Rails.logger).to have_received(:info).at_least(:once)
       end
@@ -92,7 +102,7 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
       end
 
       it "skips orchestration for outbound messages" do
-        described_class.perform_now(outbound_message)
+        described_class.new.perform(outbound_message)
 
         session_key = "session:#{wa_business_number.phone_number_id}:#{wa_contact.wa_id}"
         expect(redis.exists?(session_key)).to be false
@@ -107,7 +117,7 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
 
       it "skips duplicate orchestration" do
         # Should not create new session state
-        described_class.perform_now(wa_message)
+        described_class.new.perform(wa_message)
 
         session_key = "session:#{wa_business_number.phone_number_id}:#{wa_contact.wa_id}"
         # Session might exist from previous orchestration, but no new turn added
@@ -118,7 +128,7 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
     context "with nil message" do
       it "handles nil gracefully" do
         expect {
-          described_class.perform_now(nil)
+          described_class.new.perform(nil)
         }.not_to raise_error
       end
     end
@@ -131,7 +141,7 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
 
       it "raises error for retry mechanism" do
         expect {
-          described_class.perform_now(wa_message)
+          described_class.new.perform(wa_message)
         }.to raise_error(StandardError)
       end
 
@@ -139,7 +149,7 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
         allow(Rails.logger).to receive(:error).and_call_original
 
         begin
-          described_class.perform_now(wa_message)
+          described_class.new.perform(wa_message)
         rescue StandardError
           # Expected to raise
         end
@@ -162,7 +172,7 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
       end
 
       it "processes button messages successfully" do
-        described_class.perform_now(button_message)
+        described_class.new.perform(button_message)
 
         session_key = "session:#{wa_business_number.phone_number_id}:#{wa_contact.wa_id}"
         state = JSON.parse(redis.get(session_key))
@@ -174,7 +184,7 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
 
     context "integration with State::Controller" do
       it "routes to info lane by default" do
-        described_class.perform_now(wa_message)
+        described_class.new.perform(wa_message)
 
         session_key = "session:#{wa_business_number.phone_number_id}:#{wa_contact.wa_id}"
         state = JSON.parse(redis.get(session_key))
@@ -183,7 +193,7 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
       end
 
       it "increments state version" do
-        described_class.perform_now(wa_message)
+        described_class.new.perform(wa_message)
 
         session_key = "session:#{wa_business_number.phone_number_id}:#{wa_contact.wa_id}"
         state = JSON.parse(redis.get(session_key))
@@ -199,7 +209,7 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
           direction: "inbound"
         )
 
-        described_class.perform_now(wa_message2)
+        described_class.new.perform(wa_message2)
 
         state = JSON.parse(redis.get(session_key))
         expect(state["version"]).to be > initial_version
