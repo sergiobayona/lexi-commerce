@@ -4,80 +4,10 @@ require_relative "router_decision"
 require_relative "schemas/router_decision_schema"
 require "ruby_llm"
 
-# ======================================
-# RubyLLM-backed LLM client for intent routing
-# ======================================
-class LLMClient
-  # Configuration for LLM provider and model
-  # Defaults to OpenAI GPT-4o for best structured output support
-  PROVIDER = ENV.fetch("LLM_PROVIDER", "openai").to_sym
-  MODEL = ENV.fetch("LLM_MODEL", "gpt-4o-mini")
-  TIMEOUT = ENV.fetch("LLM_TIMEOUT", "0.9").to_f
-  TEMPERATURE = ENV.fetch("LLM_TEMPERATURE", "0.3").to_f
-
-  # Feature flag to enable/disable LLM routing
-  # Falls back to rule-based routing when disabled
-  ENABLED = ENV.fetch("LLM_ROUTING_ENABLED", "false") == "true"
-
-  def initialize
-    @client = RubyLLM.chat(provider: PROVIDER, model: MODEL) if ENABLED
-  end
-
-  # Call LLM with structured output schema for intent routing
-  #
-  # @param system [String] System prompt for routing instructions
-  # @param messages [Array<Hash>] Conversation messages
-  # @param tools [Array] Unused (for backward compatibility)
-  # @param tool_choice [String] Unused (for backward compatibility)
-  # @param timeout [Float] Request timeout in seconds
-  #
-  # @return [Hash] Arguments hash matching RouterDecisionSchema structure
-  def call(system:, messages:, tools: nil, tool_choice: nil, timeout: TIMEOUT)
-    unless ENABLED
-      return fallback_response
-    end
-
-    # Convert messages to simple prompt format
-    # RubyLLM handles system prompts internally
-    user_messages = messages.select { |m| m[:role] == "user" }
-                           .map { |m| m[:content] }
-                           .join("\n")
-
-    prompt = "#{system}\n\n#{user_messages}"
-
-    # Request structured output using schema
-    response = @client
-      .with_schema(Schemas::RouterDecisionSchema)
-      .with_options(temperature: TEMPERATURE, timeout: timeout)
-      .ask(prompt)
-
-    # RubyLLM returns the parsed hash directly
-    { "arguments" => response }
-  rescue StandardError => e
-    Rails.logger.error("LLM routing failed: #{e.class} - #{e.message}")
-    { "arguments" => fallback_response["arguments"] }
-  end
-
-  private
-
-  # Fallback to rule-based routing when LLM is disabled or fails
-  def fallback_response
-    {
-      "arguments" => {
-        "lane" => "info",
-        "intent" => "general_info",
-        "confidence" => 0.5,
-        "sticky_seconds" => 60,
-        "reasoning" => [ "LLM routing disabled or failed, using fallback" ]
-      }
-    }
-  end
-end
-
 class IntentRouter
-  def initialize(client: LLMClient.new, now: -> { Time.now.utc })
-    @client = client
-    @now    = now
+  def initialize
+    @client = RubyLLM.chat(model: "claude-sonnet-4")
+    @now    = Time.zone.now
   end
 
   # turn: { text:, payload:, timestamp:, tenant_id:, wa_id:, message_id: }
@@ -94,29 +24,17 @@ class IntentRouter
       )
     end
 
-    # 2) Build LLM function-call request
-    tools = [ route_tool_schema ]
-    sys   = system_prompt
-    msgs  = [
-      { role: "system", content: sys },
-      { role: "user",   content: turn[:text].to_s },
-      { role: "assistant", content: "STATE:" + compact_state_summary(state) },
-      *payload_hint(turn[:payload])
-    ]
-
     # 3) Call LLM (tool/function required)
-    result = @client.call(system: sys, messages: msgs, tools: tools, tool_choice: "required", timeout: 0.9)
+    result = @client.chat.with_instructions(system_prompt).with_schema(route_tool_schema)
 
     # 4) Parse & clamp
     args = (result || {})["arguments"] || {}
-    lane           = normalize_lane(args["lane"])
+    lane           = args["lane"]
     intent         = (args["intent"] || "general_info").to_s
     confidence     = clamp(args["confidence"].to_f, 0.0, 1.0)
     sticky_seconds = args["sticky_seconds"].to_i.clamp(0, 600)
     reasons        = Array(args["reasoning"]).map(&:to_s).first(5)
 
-    # 5) Fallbacks if LLM returned junk
-    lane ||= default_lane_from_context(state)
 
     RouterDecision.new(lane, intent, confidence, sticky_seconds, reasons)
   rescue StandardError => e
@@ -148,19 +66,6 @@ class IntentRouter
     [ Time.parse(until_ts) - @now.call, 0 ].max.to_i
   rescue ArgumentError
     0
-  end
-
-  def default_lane_from_context(state)
-    (state.dig("meta", "current_lane") || "info").to_s
-  end
-
-  def normalize_lane(x)
-    case x.to_s.downcase
-    when "commerce", "buy", "order" then "commerce"
-    when "support", "help"          then "support"
-    when "info", ""                 then "info"
-    else nil
-    end
   end
 
   def clamp(v, lo, hi) = [ [ v, lo ].max, hi ].min
