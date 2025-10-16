@@ -6,7 +6,7 @@ require "ruby_llm"
 
 class IntentRouter
   def initialize
-    @client = RubyLLM.chat(model: "claude-sonnet-4")
+    @client = RubyLLM.chat(model: "GPT-4o-Mini")
     @now    = Time.zone.now
   end
 
@@ -108,8 +108,12 @@ class IntentRouter
           "properties" => {
             "lane" => {
               "type" => "string",
-              "enum" => [ "info", "commerce", "support" ],
-              "description" => "Which agent domain should handle this turn?"
+              "enum" => [ "info", "product", "commerce", "support" ],
+              "description" => "Which agent domain should handle this turn?\n" \
+                               "- info: General business information (hours, location, menu, services, FAQs)\n" \
+                               "- product: Product-specific questions (details, attributes, categories, availability, comparisons)\n" \
+                               "- commerce: Shopping and transactions (browse products, add to cart, checkout, order tracking)\n" \
+                               "- support: Customer service issues (refunds, complaints, order problems, account help)"
             },
             "intent" => {
               "type" => "string",
@@ -138,7 +142,7 @@ class IntentRouter
 
   def system_prompt
     <<~SYS
-    You are the Router for a WhatsApp SMB copilot. Your job is ONLY to choose:
+    You are the Router for a WhatsApp small copilot. Your job is ONLY to choose:
     - lane: one of [info, commerce, support]
     - intent: a compact label meaningful to that lane
     - confidence: 0..1

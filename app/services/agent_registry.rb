@@ -54,6 +54,8 @@ class AgentRegistry
       Agents::CommerceAgent.new
     when "support"
       Agents::SupportAgent.new
+    when "product"
+      Agents::ProductAgent.new
     else
       raise ArgumentError, "No agent configured for lane: #{lane}"
     end
