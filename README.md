@@ -1,5 +1,7 @@
 Lexi Ingestion API
 
+WhatsApp Business Platform integration service powering conversational AI for small businesses. See [BUSINESS_SUMMARY.md](BUSINESS_SUMMARY.md) for complete business overview and capabilities.
+
 run with grok to expose the endpoint:
 
 ngrok http 3000
