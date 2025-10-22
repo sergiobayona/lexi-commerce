@@ -6,7 +6,7 @@ require "ruby_llm"
 
 class IntentRouter
   def initialize
-    @client = RubyLLM.chat(model: "GPT-4o-Mini")
+    @client = RubyLLM.chat(model: "gpt-4o-mini")
     @now    = Time.zone.now
   end
 

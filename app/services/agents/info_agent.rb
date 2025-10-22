@@ -22,6 +22,33 @@ module Agents
       end
     end
 
+    # Implement required BaseAgent interface
+    def handle(turn:, state:, intent:)
+      question = turn[:text]
+      Rails.logger.info "[InfoAgent] Handling intent '#{intent}' with question: #{question}"
+
+      # Use the chat with tools to get the response
+      response = ask(question)
+
+      # Return structured AgentResponse
+      respond(
+        messages: text_message(response),
+        state_patch: {
+          "dialogue" => {
+            "last_info_query" => question,
+            "last_interaction" => Time.now.utc.iso8601
+          }
+        }
+      )
+    rescue StandardError => e
+      Rails.logger.error "[InfoAgent] Error handling turn: #{e.message}"
+      Rails.logger.error e.backtrace.join("\n")
+
+      respond(
+        messages: text_message("Lo siento, tuve un problema procesando tu solicitud. ¿Puedes intentar de nuevo?")
+      )
+    end
+
     def ask(question)
       Rails.logger.info "[InfoAgent] Processing question: #{question}"
       response = @chat.ask(question)
@@ -30,7 +57,7 @@ module Agents
     rescue StandardError => e
       Rails.logger.error "[InfoAgent] Error processing question: #{e.message}"
       Rails.logger.error e.backtrace.join("\n")
-      { error: "Unable to process your request. Please try again." }
+      "Unable to process your request. Please try again."
     end
 
     private

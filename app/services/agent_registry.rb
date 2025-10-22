@@ -13,7 +13,7 @@ class AgentRegistry
   end
 
   # Get agent for the specified lane
-  # @param lane [String] Lane identifier: "info", "commerce", "support"
+  # @param lane [String] Lane identifier: "info", "product", "commerce", "support"
   # @return [Agents::BaseAgent] Agent instance for the lane
   # @raise [ArgumentError] If lane is not recognized
   def for_lane(lane)
@@ -33,7 +33,7 @@ class AgentRegistry
   # Get all available lanes
   # @return [Array<String>]
   def available_lanes
-    %w[info commerce support]
+    %w[info product commerce support]
   end
 
   private

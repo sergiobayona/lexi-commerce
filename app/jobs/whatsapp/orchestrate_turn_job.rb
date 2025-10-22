@@ -13,8 +13,10 @@ module Whatsapp
   class OrchestrateTurnJob < ApplicationJob
     queue_as :high_priority
 
-    # Maximum number of retries for transient failures
-    retry_on StandardError, wait: :exponentially_longer, attempts: 3
+    # Maximum number of retries for transient failures (only in production with Solid Queue)
+    # Polynomial backoff: 4s, 16s, 36s (attempt^2 seconds)
+    # Note: Inline adapter (development) doesn't support delayed retries
+    retry_on StandardError, wait: :polynomially_longer, attempts: 3 unless Rails.env.development?
 
     def perform(wa_message)
       # Skip if message is nil, outbound, or already processed
