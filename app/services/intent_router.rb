@@ -7,7 +7,7 @@ require "ruby_llm"
 class IntentRouter
   def initialize
     @client = RubyLLM.chat(model: "gpt-4o-mini")
-    @now    = Time.zone.now
+    @now    = -> { Time.zone.now }
   end
 
   # turn: { text:, payload:, timestamp:, tenant_id:, wa_id:, message_id: }
@@ -24,22 +24,24 @@ class IntentRouter
       )
     end
 
-    # 3) Call LLM (tool/function required)
-    result = @client.chat.with_instructions(system_prompt).with_schema(route_tool_schema)
+    # 2) Build prompt with user message and state
+    prompt = "User message: #{turn[:text]}\nState: #{compact_state_summary(state)}"
 
-    # 4) Parse & clamp
-    args = (result || {})["arguments"] || {}
-    lane           = args["lane"]
-    intent         = (args["intent"] || "general_info").to_s
-    confidence     = clamp(args["confidence"].to_f, 0.0, 1.0)
-    sticky_seconds = args["sticky_seconds"].to_i.clamp(0, 600)
-    reasons        = Array(args["reasoning"]).map(&:to_s).first(5)
+    # 3) Call LLM with structured schema output
+    result = @client.with_instructions(system_prompt).with_schema(Schemas::RouterDecisionSchema).ask(prompt)
+
+    # 4) Parse & clamp (with_schema returns data directly, not wrapped in "arguments")
+    lane           = result["lane"]
+    intent         = (result["intent"] || "general_info").to_s
+    confidence     = clamp(result["confidence"].to_f, 0.0, 1.0)
+    sticky_seconds = result["sticky_seconds"].to_i.clamp(0, 600)
+    reasons        = Array(result["reasoning"]).map(&:to_s).first(5)
 
 
     RouterDecision.new(lane, intent, confidence, sticky_seconds, reasons)
   rescue StandardError => e
     # Fail-safe: default to info, low confidence
-    RouterDecision.new("info", "general_info", 0.3, 0, [ "router_error: #{e.class}" ])
+    RouterDecision.new("info", "general_info", 0.3, 0, [ "router_error: #{e.class}\n #{e.backtrace}" ])
   end
 
   # Optionally update stickiness in state.meta from orchestrator after route()
@@ -96,62 +98,26 @@ class IntentRouter
     }.to_json
   end
 
-  # Tool/function schema the LLM must call
-  def route_tool_schema
-    {
-      "type" => "function",
-      "function" => {
-        "name" => "route",
-        "description" => "Choose lane and intent for this turn. Consider message, payload, and state summary. Return confidence and a short reasoning list. Suggest a sticky window in seconds for continuity.",
-        "parameters" => {
-          "type" => "object",
-          "properties" => {
-            "lane" => {
-              "type" => "string",
-              "enum" => [ "info", "product", "commerce", "support" ],
-              "description" => "Which agent domain should handle this turn?\n" \
-                               "- info: General business information (hours, location, menu, services, FAQs)\n" \
-                               "- product: Product-specific questions (details, attributes, categories, availability, comparisons)\n" \
-                               "- commerce: Shopping and transactions (browse products, add to cart, checkout, order tracking)\n" \
-                               "- support: Customer service issues (refunds, complaints, order problems, account help)"
-            },
-            "intent" => {
-              "type" => "string",
-              "description" => "Compact intent label for the chosen agent (e.g., business_hours, start_order, refund_request)."
-            },
-            "confidence" => {
-              "type" => "number",
-              "minimum" => 0, "maximum" => 1
-            },
-            "sticky_seconds" => {
-              "type" => "integer",
-              "minimum" => 0, "maximum" => 600,
-              "description" => "How long to pin to this lane to avoid ping-pong."
-            },
-            "reasoning" => {
-              "type" => "array",
-              "items" => { "type" => "string" },
-              "description" => "1–3 short reasons for observability."
-            }
-          },
-          "required" => [ "lane", "intent", "confidence" ]
-        }
-      }
-    }
-  end
-
   def system_prompt
     <<~SYS
-    You are the Router for a WhatsApp small copilot. Your job is ONLY to choose:
-    - lane: one of [info, commerce, support]
-    - intent: a compact label meaningful to that lane
-    - confidence: 0..1
-    - sticky_seconds: how long to keep the user in this lane (0 if not needed)
-    Consider:
-      * The user's latest message
-      * Any interactive payload
-      * A compact STATE summary (no PII)
-    STRICTLY return a function call to `route` with your decision. Do not answer the user.
+    You are the Router for a WhatsApp business copilot. Analyze the user's message and session state to determine:
+
+    - lane: Which agent domain should handle this turn [info, product, commerce, support]
+      * info: General business information (hours, location, menu, services, FAQs)
+      * product: Product-specific questions (details, attributes, categories, availability, comparisons)
+      * commerce: Shopping and transactions (browse products, add to cart, checkout, order tracking)
+      * support: Customer service issues (refunds, complaints, order problems, account help)
+
+    - intent: A compact intent label meaningful to the chosen lane (e.g., business_hours, start_order, refund_request)
+
+    - confidence: Your confidence in this routing decision (0.0 to 1.0)
+
+    - sticky_seconds: How long to keep the user in this lane to avoid ping-pong (0-600 seconds, 0 if not needed)
+
+    - reasoning: 1-3 short reasons for your decision (for observability)
+
+    Consider the user's latest message, any interactive payload, and the compact STATE summary provided.
+    Return ONLY your routing decision in the structured format. Do not answer the user's question.
     SYS
   end
 end

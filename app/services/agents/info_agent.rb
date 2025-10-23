@@ -18,7 +18,7 @@ module Agents
 
       # Optional: Add tool call monitoring for debugging
       @chat.on_tool_call do |tool_call|
-        Rails.logger.info "[InfoAgent] Tool invoked: #{tool_call.name} with params: #{tool_call.params}"
+        Rails.logger.info "[InfoAgent] Tool invoked: #{tool_call.name} with arguments: #{tool_call.arguments}"
       end
     end
 
