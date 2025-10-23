@@ -33,11 +33,6 @@ RSpec.describe State::Builder do
         expect(session).to have_key("slots")
         expect(session).to have_key("commerce")
         expect(session).to have_key("support")
-        expect(session).to have_key("version")
-      end
-
-      it "sets current version" do
-        expect(session["version"]).to eq(State::Contract::CURRENT_VERSION)
       end
 
       it "includes default meta fields" do
@@ -130,7 +125,6 @@ RSpec.describe State::Builder do
             "turns" => [ { "role" => "user", "text" => "hola" } ],
             "last_user_msg_id" => "msg_123"
           },
-          "version" => State::Contract::CURRENT_VERSION
         }.to_json
       end
 
@@ -171,7 +165,6 @@ RSpec.describe State::Builder do
       it "fills missing nested defaults" do
         partial_json = {
           "meta" => { "tenant_id" => "t1", "wa_id" => "wa1" },
-          "version" => State::Contract::CURRENT_VERSION
         }.to_json
 
         state = builder.from_json(partial_json)
@@ -191,7 +184,6 @@ RSpec.describe State::Builder do
         expect(state["meta"]).to be_present
         expect(state["dialogue"]).to be_present
         expect(state["slots"]).to be_present
-        expect(state["version"]).to eq(State::Contract::CURRENT_VERSION)
       end
     end
 
@@ -202,7 +194,6 @@ RSpec.describe State::Builder do
         expect(state["meta"]).to be_present
         expect(state["dialogue"]).to be_present
         expect(state["slots"]).to be_present
-        expect(state["version"]).to eq(State::Contract::CURRENT_VERSION)
       end
     end
 
@@ -213,63 +204,6 @@ RSpec.describe State::Builder do
         expect(state["meta"]).to be_present
         expect(state["dialogue"]).to be_present
         expect(state["slots"]).to be_present
-        expect(state["version"]).to eq(State::Contract::CURRENT_VERSION)
-      end
-    end
-
-    context "with old version requiring upcast" do
-      let(:old_version_json) do
-        {
-          "meta" => { "tenant_id" => "t1", "wa_id" => "wa1" },
-          "version" => 1
-        }.to_json
-      end
-
-      it "triggers upcaster for old version" do
-        upcaster = instance_double(State::Upcaster)
-        allow(State::Upcaster).to receive(:new).and_return(upcaster)
-        allow(upcaster).to receive(:call) do |state|
-          state["version"] = State::Contract::CURRENT_VERSION
-          state
-        end
-
-        state = builder.from_json(old_version_json)
-
-        expect(State::Upcaster).to have_received(:new)
-        expect(upcaster).to have_received(:call)
-      end
-
-      it "returns upcasted state" do
-        upcaster = instance_double(State::Upcaster)
-        allow(State::Upcaster).to receive(:new).and_return(upcaster)
-        allow(upcaster).to receive(:call) do |state|
-          state["version"] = State::Contract::CURRENT_VERSION
-          state["upcasted"] = true
-          state
-        end
-
-        state = builder.from_json(old_version_json)
-
-        expect(state["upcasted"]).to be true
-        expect(state["version"]).to eq(State::Contract::CURRENT_VERSION)
-      end
-    end
-
-    context "with current version" do
-      let(:current_version_json) do
-        {
-          "meta" => { "tenant_id" => "t1", "wa_id" => "wa1" },
-          "version" => State::Contract::CURRENT_VERSION
-        }.to_json
-      end
-
-      it "skips upcasting for current version" do
-        upcaster = instance_double(State::Upcaster)
-        allow(State::Upcaster).to receive(:new).and_return(upcaster)
-
-        builder.from_json(current_version_json)
-
-        expect(State::Upcaster).not_to have_received(:new)
       end
     end
 
@@ -294,7 +228,6 @@ RSpec.describe State::Builder do
               "subtotal_cents" => 500
             }
           },
-          "version" => State::Contract::CURRENT_VERSION
         }.to_json
 
         state = builder.from_json(json_state)
@@ -321,7 +254,6 @@ RSpec.describe State::Builder do
           "dialogue" => {
             "turns" => [ { "role" => "user", "text" => "hi" } ]
           },
-          "version" => State::Contract::CURRENT_VERSION
         }.to_json
 
         state = builder.from_json(json_state)
@@ -337,7 +269,6 @@ RSpec.describe State::Builder do
             "wa_id" => "wa1",
             "current_lane" => "support"
           },
-          "version" => State::Contract::CURRENT_VERSION
         }.to_json
 
         state = builder.from_json(json_state)
@@ -357,14 +288,6 @@ RSpec.describe State::Builder do
       expect(State::Contract).to have_received(:blank)
     end
 
-    it "uses Contract.current_version? for version checking" do
-      allow(State::Contract).to receive(:current_version?).and_call_original
-
-      json = { "version" => State::Contract::CURRENT_VERSION }.to_json
-      builder.from_json(json)
-
-      expect(State::Contract).to have_received(:current_version?)
-    end
   end
 
   describe "thread safety" do
@@ -392,16 +315,10 @@ RSpec.describe State::Builder do
         "meta" => { "tenant_id" => "t1", "wa_id" => "wa1" }
       }.to_json
 
-      upcaster = instance_double(State::Upcaster)
-      allow(State::Upcaster).to receive(:new).and_return(upcaster)
-      allow(upcaster).to receive(:call) do |state|
-        state["version"] = State::Contract::CURRENT_VERSION
-        state
-      end
-
       state = builder.from_json(json_state)
 
-      expect(state["version"]).to eq(State::Contract::CURRENT_VERSION)
+      expect(state).to be_a(Hash)
+      expect(state["meta"]["tenant_id"]).to eq("t1")
     end
 
     it "handles empty JSON object" do
@@ -410,7 +327,6 @@ RSpec.describe State::Builder do
       expect(state["meta"]).to be_present
       expect(state["dialogue"]).to be_present
       expect(state["slots"]).to be_present
-      expect(state["version"]).to eq(State::Contract::CURRENT_VERSION)
     end
 
     it "handles deeply nested custom fields" do
@@ -426,7 +342,6 @@ RSpec.describe State::Builder do
             }
           }
         },
-        "version" => State::Contract::CURRENT_VERSION
       }.to_json
 
       state = builder.from_json(json_state)

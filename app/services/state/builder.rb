@@ -16,11 +16,10 @@ module State
       s
     end
 
-    # Hydrate from persisted JSON (e.g. Redis string), upcast if needed, fill missing defaults
+    # Hydrate from persisted JSON (e.g. Redis string), fill missing defaults
     def from_json(json_str)
       raw = (json_str && json_str.size > 1) ? JSON.parse(json_str) : {}
       state = deep_merge(@contract.blank, raw)       # fill defaults
-      state = Upcaster.new.call(state) unless Contract.current_version?(state)
       state
     end
 

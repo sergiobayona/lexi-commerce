@@ -4,23 +4,13 @@ require "rails_helper"
 
 RSpec.describe State::Contract do
   describe "constants" do
-    describe "CURRENT_VERSION" do
-      it "is defined as an integer" do
-        expect(described_class::CURRENT_VERSION).to be_a(Integer)
-      end
-
-      it "has version 3" do
-        expect(described_class::CURRENT_VERSION).to eq(3)
-      end
-    end
-
     describe "REQUIRED_KEYS" do
       it "is frozen" do
         expect(described_class::REQUIRED_KEYS).to be_frozen
       end
 
       it "contains essential structural keys" do
-        expect(described_class::REQUIRED_KEYS).to eq(%w[meta dialogue slots version])
+        expect(described_class::REQUIRED_KEYS).to eq(%w[meta dialogue slots])
       end
 
       it "is an array of strings" do
@@ -41,10 +31,6 @@ RSpec.describe State::Contract do
         described_class::REQUIRED_KEYS.each do |key|
           expect(described_class::DEFAULTS).to have_key(key)
         end
-      end
-
-      it "includes version matching CURRENT_VERSION" do
-        expect(described_class::DEFAULTS["version"]).to eq(described_class::CURRENT_VERSION)
       end
     end
   end
@@ -234,15 +220,11 @@ RSpec.describe State::Contract do
         expect(defaults["locks"]["agent"]).to be_nil
         expect(defaults["locks"]["until"]).to be_nil
       end
-
-      it "has version field" do
-        expect(defaults["version"]).to eq(described_class::CURRENT_VERSION)
-      end
     end
 
     describe "complete structure validation" do
       it "has all expected top-level keys" do
-        expected_keys = %w[meta dialogue slots commerce support last_tool locks version]
+        expected_keys = %w[meta dialogue slots commerce support last_tool locks]
         expect(defaults.keys).to match_array(expected_keys)
       end
 
@@ -316,11 +298,6 @@ RSpec.describe State::Contract do
       expect(blank2["commerce"]["cart"]["items"]).to be_empty
     end
 
-    it "includes current version" do
-      blank = described_class.blank
-      expect(blank["version"]).to eq(described_class::CURRENT_VERSION)
-    end
-
     it "creates new object IDs for nested hashes" do
       blank1 = described_class.blank
       blank2 = described_class.blank
@@ -336,103 +313,6 @@ RSpec.describe State::Contract do
 
       expect(blank1["dialogue"]["turns"].object_id).not_to eq(blank2["dialogue"]["turns"].object_id)
       expect(blank1["commerce"]["cart"]["items"].object_id).not_to eq(blank2["commerce"]["cart"]["items"].object_id)
-    end
-  end
-
-  describe ".current_version?" do
-    context "with current version state" do
-      let(:current_state) do
-        {
-          "meta" => { "tenant_id" => "t1" },
-          "version" => described_class::CURRENT_VERSION
-        }
-      end
-
-      it "returns true" do
-        expect(described_class.current_version?(current_state)).to be true
-      end
-    end
-
-    context "with old version state" do
-      let(:old_state) do
-        {
-          "meta" => { "tenant_id" => "t1" },
-          "version" => 1
-        }
-      end
-
-      it "returns false" do
-        expect(described_class.current_version?(old_state)).to be false
-      end
-    end
-
-    context "with future version state" do
-      let(:future_state) do
-        {
-          "meta" => { "tenant_id" => "t1" },
-          "version" => 999
-        }
-      end
-
-      it "returns false" do
-        expect(described_class.current_version?(future_state)).to be false
-      end
-    end
-
-    context "with missing version field" do
-      let(:no_version_state) do
-        { "meta" => { "tenant_id" => "t1" } }
-      end
-
-      it "returns false" do
-        expect(described_class.current_version?(no_version_state)).to be false
-      end
-    end
-
-    context "with nil state" do
-      it "returns false" do
-        expect(described_class.current_version?(nil)).to be false
-      end
-    end
-
-    context "with non-hash state" do
-      it "returns false for string" do
-        expect(described_class.current_version?("state")).to be false
-      end
-
-      it "returns false for array" do
-        expect(described_class.current_version?([])).to be false
-      end
-
-      it "returns false for integer" do
-        expect(described_class.current_version?(123)).to be false
-      end
-    end
-
-    context "with version as string matching current version" do
-      let(:string_version_state) do
-        {
-          "meta" => { "tenant_id" => "t1" },
-          "version" => described_class::CURRENT_VERSION.to_s
-        }
-      end
-
-      it "returns false (strict integer comparison)" do
-        expect(described_class.current_version?(string_version_state)).to be false
-      end
-    end
-
-    context "with version as float" do
-      let(:float_version_state) do
-        {
-          "meta" => { "tenant_id" => "t1" },
-          "version" => 3.0
-        }
-      end
-
-      it "returns true (accepts numeric equality)" do
-        expect(described_class.current_version?(float_version_state)).to be true
-      end
     end
   end
 

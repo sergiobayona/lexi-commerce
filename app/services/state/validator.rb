@@ -5,22 +5,13 @@ module State
     class Invalid < StandardError; end
 
     def call!(state)
-      unless state.is_a?(Hash)
-        raise Invalid, "state must be a Hash"
-      end
-
-      missing = Contract::REQUIRED_KEYS - state.keys
-      raise Invalid, "missing keys: #{missing.join(", ")}" if missing.any?
+      raise Invalid, "state must be Hash" unless state.is_a?(Hash)
 
       meta = state["meta"]
-      raise Invalid, "meta must be a Hash" unless meta.is_a?(Hash)
-      %w[tenant_id wa_id locale timezone current_lane].each do |k|
-        raise Invalid, "meta.#{k} missing" if meta[k].nil? && k != "sticky_until"
-      end
-
-      # sanity checks
-      lane = meta["current_lane"]
-      raise Invalid, "invalid lane #{lane}" unless AgentConfig.valid_lane?(lane)
+      raise Invalid, "meta missing" unless meta.is_a?(Hash)
+      raise Invalid, "tenant_id missing" if meta["tenant_id"].nil?
+      raise Invalid, "wa_id missing" if meta["wa_id"].nil?
+      raise Invalid, "current_lane invalid" unless AgentConfig.valid_lane?(meta["current_lane"])
 
       true
     end

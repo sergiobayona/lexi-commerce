@@ -10,9 +10,6 @@ module State
     # Configuration defaults
     DEFAULT_SESSION_TTL = 86_400      # 24 hours
     DEFAULT_IDEMPOTENCY_TTL = 3_600   # 1 hour
-    DEFAULT_LOCK_TTL = 30             # 30 seconds
-    MAX_LOCK_WAIT = 5                 # seconds
-    LOCK_RETRY_INTERVAL = 0.1         # seconds
 
     def initialize(
       redis:,
@@ -27,7 +24,6 @@ module State
       @registry = registry
       @builder = builder
       @validator = validator
-      @patcher = State::Patcher.new(redis)
       @logger = logger
     end
 
@@ -39,11 +35,6 @@ module State
 
       # 1. Idempotency check
       return duplicate_turn_result if already_processed?(turn[:message_id])
-
-      # 2. Acquire session lock
-      unless acquire_lock!(session_key)
-        return busy_result("Failed to acquire session lock")
-      end
 
       begin
         # 3. Load or create session
@@ -85,38 +76,9 @@ module State
         # 10. Build complete patch including dialogue update and sticky routing metadata
         complete_patch = build_complete_patch(state: state, agent_response: agent_response)
 
-        # 11. Apply complete state patch with optimistic locking
-        patch_success = apply_state_patch(
-          session_key: session_key,
-          current_state: state,
-          patch: complete_patch
-        )
-
-        unless patch_success
-          # Retry once on conflict - reload state and rebuild complete patch
-          state = load_or_create_session(turn)
-
-          # Re-append turn to fresh dialogue
-          append_turn_to_dialogue(state, turn)
-
-          # Re-apply sticky routing metadata
-          @router.update_sticky!(
-            state: state,
-            lane: route_decision.lane,
-            seconds: route_decision.sticky_seconds
-          )
-
-          # Rebuild complete patch with refreshed state
-          complete_patch = build_complete_patch(state: state, agent_response: agent_response)
-
-          patch_success = apply_state_patch(
-            session_key: session_key,
-            current_state: state,
-            patch: complete_patch
-          )
-
-          return error_result("State patch conflict after retry") unless patch_success
-        end
+        # 11. Apply complete patch to state and save to Redis
+        apply_complete_patch!(state, complete_patch)
+        save_state!(session_key, state)
 
         # 11. Handle lane handoff if requested
         if agent_response.handoff
@@ -139,7 +101,7 @@ module State
         TurnResult.new(
           success: true,
           messages: agent_response.messages,
-          state_version: state["version"] + 1,
+          state_version: nil, # No longer tracking versions
           lane: route_decision.lane,
           error: nil
         )
@@ -152,9 +114,6 @@ module State
       rescue StandardError => e
         log_error(turn, e)
         error_result("Turn processing failed: #{e.message}")
-
-      ensure
-        release_lock!(session_key)
       end
     end
 
@@ -172,10 +131,6 @@ module State
       "turn:processed:#{message_id}"
     end
 
-    def lock_key(session_key)
-      "#{session_key}:lock"
-    end
-
     # ============================================
     # Idempotency
     # ============================================
@@ -186,52 +141,6 @@ module State
 
     def mark_processed(message_id)
       @redis.setex(idempotency_key(message_id), DEFAULT_IDEMPOTENCY_TTL, "1")
-    end
-
-    # ============================================
-    # Distributed Locking
-    # ============================================
-
-    def acquire_lock!(session_key)
-      lock_id = "lock:#{SecureRandom.uuid}"
-      deadline = Time.now.utc + MAX_LOCK_WAIT
-
-      while Time.now.utc < deadline
-        # Try to acquire lock with NX (only set if not exists) and EX (expiry)
-        acquired = @redis.set(
-          lock_key(session_key),
-          lock_id,
-          nx: true,
-          ex: DEFAULT_LOCK_TTL
-        )
-
-        if acquired
-          # Store lock_id in thread-local storage for release verification
-          Thread.current[:session_lock_id] = lock_id
-          return true
-        end
-
-        sleep(LOCK_RETRY_INTERVAL)
-      end
-
-      false
-    end
-
-    def release_lock!(session_key)
-      lock_id = Thread.current[:session_lock_id]
-      return unless lock_id
-
-      # Only delete if we own the lock (prevent releasing someone else's lock)
-      lua_script = <<~LUA
-        if redis.call("get", KEYS[1]) == ARGV[1] then
-          return redis.call("del", KEYS[1])
-        else
-          return 0
-        end
-      LUA
-
-      @redis.eval(lua_script, keys: [ lock_key(session_key) ], argv: [ lock_id ])
-      Thread.current[:session_lock_id] = nil
     end
 
     # ============================================
@@ -311,38 +220,35 @@ module State
       complete_patch
     end
 
-    def apply_state_patch(session_key:, current_state:, patch:)
-      # Always save state to persist dialogue updates and increment version
-      # Pass empty hash if no agent patch
-      @patcher.patch!(
-        key: session_key,
-        expected_version: current_state["version"],
-        patch: patch || {},
-        ttl_seconds: DEFAULT_SESSION_TTL
-      )
+    def apply_complete_patch!(state, patch)
+      # Deep merge patch into state
+      patch.each do |key, value|
+        if state[key].is_a?(Hash) && value.is_a?(Hash)
+          state[key] = state[key].merge(value)
+        else
+          state[key] = value
+        end
+      end
+    end
+
+    def save_state!(session_key, state)
+      state["updated_at"] = Time.now.utc.iso8601
+      @redis.setex(session_key, DEFAULT_SESSION_TTL, state.to_json)
     end
 
     def handle_lane_handoff(session_key:, state:, handoff:)
       target_lane = handoff[:to_lane]
       return unless AgentConfig.valid_lane?(target_lane)
 
-      handoff_patch = {
-        "meta" => {
-          "current_lane" => target_lane,
-          "sticky_until" => nil # Clear stickiness on handoff
-        }
-      }
+      state["meta"]["current_lane"] = target_lane
+      state["meta"]["sticky_until"] = nil # Clear stickiness on handoff
 
       # Optionally carry over specific state
       if handoff[:carry_state]
-        handoff_patch.merge!(handoff[:carry_state])
+        state.merge!(handoff[:carry_state])
       end
 
-      apply_state_patch(
-        session_key: session_key,
-        current_state: state,
-        patch: handoff_patch
-      )
+      save_state!(session_key, state)
     end
 
     # ============================================

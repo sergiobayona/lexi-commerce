@@ -2,8 +2,6 @@ require_relative "../../../lib/agent_config"
 
 module State
   module Contract
-    CURRENT_VERSION = 3
-
     DEFAULTS = {
       "meta" => {
         "tenant_id"    => nil,
@@ -38,19 +36,14 @@ module State
         "return_window_open" => nil
       },
       "last_tool" => nil,
-      "locks"     => { "agent" => nil, "until" => nil },
-      "version"   => CURRENT_VERSION
+      "locks"     => { "agent" => nil, "until" => nil }
     }.freeze
 
     # Minimal structural expectations (fast!!)
-    REQUIRED_KEYS = %w[meta dialogue slots version].freeze
+    REQUIRED_KEYS = %w[meta dialogue slots].freeze
 
     def self.blank
       Marshal.load(Marshal.dump(DEFAULTS)) # deep dup
-    end
-
-    def self.current_version?(state)
-      state.is_a?(Hash) && state["version"] == CURRENT_VERSION
     end
   end
 end

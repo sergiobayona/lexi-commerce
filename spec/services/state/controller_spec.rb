@@ -89,7 +89,7 @@ RSpec.describe State::Controller do
         state = JSON.parse(session_json)
         expect(state["meta"]["tenant_id"]).to eq("tenant_123")
         expect(state["meta"]["wa_id"]).to eq("16505551234")
-        expect(state["version"]).to be > 0
+        expect(state["updated_at"]).to be_present
       end
 
       it "validates state before processing" do
@@ -251,14 +251,13 @@ RSpec.describe State::Controller do
         expect(result.success).to be true
       end
 
-      it "increments version" do
-        initial_version = existing_state["version"]
+      it "updates timestamp" do
         controller.handle_turn(base_turn)
 
         session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
         updated_state = JSON.parse(redis.get(session_key))
 
-        expect(updated_state["version"]).to be > initial_version
+        expect(updated_state["updated_at"]).to be_present
       end
 
       it "preserves existing state fields" do
@@ -328,9 +327,9 @@ RSpec.describe State::Controller do
 
     context "with validation error" do
       before do
-        # Create corrupted state (correct version but invalid structure)
+        # Create corrupted state (invalid structure)
         session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
-        corrupted_state = { "meta" => "invalid", "version" => State::Contract::CURRENT_VERSION }
+        corrupted_state = { "meta" => "invalid" }
         redis.set(session_key, corrupted_state.to_json)
       end
 
@@ -362,117 +361,6 @@ RSpec.describe State::Controller do
       end
     end
 
-    context "with state patch conflict" do
-      let(:route_decision) do
-        RouterDecision.new("info", "general_info", 0.9, 0, [])
-      end
-
-      let(:agent_response) do
-        Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Response" } }],
-          state_patch: { "test" => "patch" },
-          handoff: nil
-        )
-      end
-
-      before do
-        # Create initial state
-        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
-        initial_state = State::Builder.new.new_session(
-          tenant_id: base_turn[:tenant_id],
-          wa_id: base_turn[:wa_id]
-        )
-        redis.set(session_key, initial_state.to_json)
-
-        allow(router).to receive(:route).and_return(route_decision)
-        allow(router).to receive(:update_sticky!)
-        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
-        allow(info_agent).to receive(:handle).and_return(agent_response)
-
-        # Simulate concurrent update by changing version mid-flight
-        allow_any_instance_of(State::Patcher).to receive(:patch!).and_return(false, true)
-      end
-
-      it "retries patch once" do
-        result = controller.handle_turn(base_turn)
-
-        expect(result.success).to be true
-      end
-
-      it "calls update_sticky twice when retrying (once for each attempt)" do
-        controller.handle_turn(base_turn)
-
-        # Should be called twice: once for first attempt, once for retry
-        expect(router).to have_received(:update_sticky!).twice
-      end
-
-      it "calls append_turn_to_dialogue logic on retry" do
-        # The test is indirect: if dialogue isn't re-appended on retry,
-        # the turn would be missing. The fact that other tests pass shows
-        # the logic works, but this documents the expectation.
-        result = controller.handle_turn(base_turn)
-        expect(result.success).to be true
-      end
-    end
-
-    context "with persistent patch conflict" do
-      let(:route_decision) do
-        RouterDecision.new("info", "general_info", 0.9, 0, [])
-      end
-
-      let(:agent_response) do
-        Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Response" } }],
-          state_patch: { "test" => "patch" },
-          handoff: nil
-        )
-      end
-
-      before do
-        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
-        initial_state = State::Builder.new.new_session(
-          tenant_id: base_turn[:tenant_id],
-          wa_id: base_turn[:wa_id]
-        )
-        redis.set(session_key, initial_state.to_json)
-
-        allow(router).to receive(:route).and_return(route_decision)
-        allow(router).to receive(:update_sticky!)
-        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
-        allow(info_agent).to receive(:handle).and_return(agent_response)
-
-        # Always fail patch
-        allow_any_instance_of(State::Patcher).to receive(:patch!).and_return(false)
-      end
-
-      it "returns error after retry" do
-        result = controller.handle_turn(base_turn)
-
-        expect(result.success).to be false
-        expect(result.error).to match(/conflict/)
-      end
-    end
-
-    context "with lock contention" do
-      it "prevents concurrent processing of same session" do
-        # Manually acquire lock to simulate another process holding it
-        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
-        lock_key = "#{session_key}:lock"
-
-        # Set lock with 30 second TTL
-        redis.set(lock_key, "1", ex: 30, nx: true)
-
-        # Try to process turn - should fail to acquire lock
-        result = controller.handle_turn(base_turn)
-
-        expect(result.success).to be false
-        expect(result.error).to match(/lock/)
-
-        # Clean up
-        redis.del(lock_key)
-      end
-    end
-
     context "with agent error" do
       let(:route_decision) do
         RouterDecision.new("info", "general_info", 0.9, 0, [])
@@ -500,16 +388,6 @@ RSpec.describe State::Controller do
           expect(parsed["event"]).to eq("turn_error")
           expect(parsed["error"]).to match(/Agent crashed/)
         end
-      end
-
-      it "releases lock on error" do
-        controller.handle_turn(base_turn)
-
-        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
-        lock_key = "#{session_key}:lock"
-
-        # Lock should be released
-        expect(redis.exists?(lock_key)).to be false
       end
     end
 
