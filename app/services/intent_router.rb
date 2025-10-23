@@ -2,6 +2,7 @@
 
 require_relative "router_decision"
 require_relative "schemas/router_decision_schema"
+require_relative "../../lib/agent_config"
 require "ruby_llm"
 
 class IntentRouter
@@ -100,14 +101,16 @@ class IntentRouter
   end
 
   def system_prompt
+    # Generate lane descriptions dynamically from config
+    lane_descriptions = AgentConfig.lane_descriptions.map do |lane, description|
+      "      * #{lane}: #{description}"
+    end.join("\n")
+
     <<~SYS
     You are the Router for a WhatsApp business copilot. Analyze the user's message and session state to determine:
 
-    - lane: Which agent domain should handle this turn [info, product, commerce, support]
-      * info: General business information (hours, location, menu, services, FAQs)
-      * product: Product-specific questions (details, attributes, categories, availability, comparisons)
-      * commerce: Shopping and transactions (browse products, add to cart, checkout, order tracking)
-      * support: Customer service issues (refunds, complaints, order problems, account help)
+    - lane: Which agent domain should handle this turn [#{AgentConfig.lanes.join(", ")}]
+    #{lane_descriptions}
 
     - intent: A compact intent label meaningful to the chosen lane (e.g., business_hours, start_order, refund_request)
 

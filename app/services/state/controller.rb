@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../../lib/agent_config"
+
 module State
   class Controller
     # Result data structure returned from handle_turn
@@ -80,20 +82,8 @@ module State
           intent: route_decision.intent
         )
 
-        # 10. Build complete patch including dialogue update
-        complete_patch = {
-          "dialogue" => state["dialogue"]
-        }
-        # Deep merge agent's state patch (if any) to preserve dialogue.turns
-        if agent_response.state_patch
-          agent_response.state_patch.each do |key, value|
-            if complete_patch[key].is_a?(Hash) && value.is_a?(Hash)
-              complete_patch[key] = complete_patch[key].merge(value)
-            else
-              complete_patch[key] = value
-            end
-          end
-        end
+        # 10. Build complete patch including dialogue update and sticky routing metadata
+        complete_patch = build_complete_patch(state: state, agent_response: agent_response)
 
         # 11. Apply complete state patch with optimistic locking
         patch_success = apply_state_patch(
@@ -103,12 +93,26 @@ module State
         )
 
         unless patch_success
-          # Retry once on conflict
+          # Retry once on conflict - reload state and rebuild complete patch
           state = load_or_create_session(turn)
+
+          # Re-append turn to fresh dialogue
+          append_turn_to_dialogue(state, turn)
+
+          # Re-apply sticky routing metadata
+          @router.update_sticky!(
+            state: state,
+            lane: route_decision.lane,
+            seconds: route_decision.sticky_seconds
+          )
+
+          # Rebuild complete patch with refreshed state
+          complete_patch = build_complete_patch(state: state, agent_response: agent_response)
+
           patch_success = apply_state_patch(
             session_key: session_key,
             current_state: state,
-            patch: agent_response.state_patch
+            patch: complete_patch
           )
 
           return error_result("State patch conflict after retry") unless patch_success
@@ -226,7 +230,7 @@ module State
         end
       LUA
 
-      @redis.eval(lua_script, keys: [lock_key(session_key)], argv: [lock_id])
+      @redis.eval(lua_script, keys: [ lock_key(session_key) ], argv: [ lock_id ])
       Thread.current[:session_lock_id] = nil
     end
 
@@ -287,6 +291,26 @@ module State
     # State Updates
     # ============================================
 
+    def build_complete_patch(state:, agent_response:)
+      complete_patch = {
+        "dialogue" => state["dialogue"],
+        "meta" => state["meta"]
+      }
+
+      # Deep merge agent's state patch (if any) to preserve existing keys
+      if agent_response.state_patch
+        agent_response.state_patch.each do |key, value|
+          if complete_patch[key].is_a?(Hash) && value.is_a?(Hash)
+            complete_patch[key] = complete_patch[key].merge(value)
+          else
+            complete_patch[key] = value
+          end
+        end
+      end
+
+      complete_patch
+    end
+
     def apply_state_patch(session_key:, current_state:, patch:)
       # Always save state to persist dialogue updates and increment version
       # Pass empty hash if no agent patch
@@ -300,7 +324,7 @@ module State
 
     def handle_lane_handoff(session_key:, state:, handoff:)
       target_lane = handoff[:to_lane]
-      return unless %w[info commerce support].include?(target_lane)
+      return unless AgentConfig.valid_lane?(target_lane)
 
       handoff_patch = {
         "meta" => {

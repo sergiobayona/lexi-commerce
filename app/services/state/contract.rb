@@ -1,3 +1,5 @@
+require_relative "../../../lib/agent_config"
+
 module State
   module Contract
     CURRENT_VERSION = 3
@@ -8,7 +10,7 @@ module State
         "wa_id"        => nil,
         "locale"       => "es-CO",
         "timezone"     => "America/Bogota",
-        "current_lane" => "info",
+        "current_lane" => AgentConfig.default_lane,
         "sticky_until" => nil,
         "customer_id"  => nil,
         "flags"        => { "human_handoff" => false, "vip" => false }

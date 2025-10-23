@@ -1,3 +1,5 @@
+require_relative "../../../lib/agent_config"
+
 module State
   class Validator
     class Invalid < StandardError; end
@@ -18,7 +20,7 @@ module State
 
       # sanity checks
       lane = meta["current_lane"]
-      raise Invalid, "invalid lane #{lane}" unless %w[info product commerce support].include?(lane)
+      raise Invalid, "invalid lane #{lane}" unless AgentConfig.valid_lane?(lane)
 
       true
     end

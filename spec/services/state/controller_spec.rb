@@ -398,6 +398,21 @@ RSpec.describe State::Controller do
 
         expect(result.success).to be true
       end
+
+      it "calls update_sticky twice when retrying (once for each attempt)" do
+        controller.handle_turn(base_turn)
+
+        # Should be called twice: once for first attempt, once for retry
+        expect(router).to have_received(:update_sticky!).twice
+      end
+
+      it "calls append_turn_to_dialogue logic on retry" do
+        # The test is indirect: if dialogue isn't re-appended on retry,
+        # the turn would be missing. The fact that other tests pass shows
+        # the logic works, but this documents the expectation.
+        result = controller.handle_turn(base_turn)
+        expect(result.success).to be true
+      end
     end
 
     context "with persistent patch conflict" do

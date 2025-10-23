@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
+require_relative "../../lib/agent_config"
+
 # AgentRegistry provides centralized agent lookup and lifecycle management.
 # Agents are lazy-loaded and cached for performance.
+# Agent definitions are loaded from config/agents.yml via AgentConfig.
 #
 # Usage:
 #   registry = AgentRegistry.new
@@ -13,7 +16,7 @@ class AgentRegistry
   end
 
   # Get agent for the specified lane
-  # @param lane [String] Lane identifier: "info", "product", "commerce", "support"
+  # @param lane [String] Lane identifier (e.g., "info", "product", "commerce", "support")
   # @return [Agents::BaseAgent] Agent instance for the lane
   # @raise [ArgumentError] If lane is not recognized
   def for_lane(lane)
@@ -30,10 +33,10 @@ class AgentRegistry
     valid_lane?(normalize_lane(lane))
   end
 
-  # Get all available lanes
+  # Get all available lanes from configuration
   # @return [Array<String>]
   def available_lanes
-    %w[info product commerce support]
+    AgentConfig.lanes
   end
 
   private
@@ -43,21 +46,13 @@ class AgentRegistry
   end
 
   def valid_lane?(lane)
-    available_lanes.include?(lane)
+    AgentConfig.valid_lane?(lane)
   end
 
   def instantiate_agent(lane)
-    case lane
-    when "info"
-      Agents::InfoAgent.new
-    when "commerce"
-      Agents::CommerceAgent.new
-    when "support"
-      Agents::SupportAgent.new
-    when "product"
-      Agents::ProductAgent.new
-    else
-      raise ArgumentError, "No agent configured for lane: #{lane}"
-    end
+    agent_class = AgentConfig.agent_class_for(lane)
+    raise ArgumentError, "No agent configured for lane: #{lane}" unless agent_class
+
+    agent_class.new
   end
 end

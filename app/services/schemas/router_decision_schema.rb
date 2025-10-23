@@ -1,12 +1,14 @@
 # frozen_string_literal: true
 
 require "ruby_llm/schema"
+require_relative "../../../lib/agent_config"
 
 module Schemas
   # RubyLLM Schema for structured IntentRouter output
   # Ensures LLM responses match the RouterDecision data structure exactly
   #
   # Used by IntentRouter to get reliable, type-safe routing decisions from LLM
+  # Lane options are loaded from config/agents.yml
   #
   # @example
   #   chat = RubyLLM.chat(provider: :openai, model: "gpt-4o")
@@ -15,7 +17,7 @@ module Schemas
   class RouterDecisionSchema < RubyLLM::Schema
     # Which agent domain should handle this turn
     string :lane,
-           enum: [ "info", "product", "commerce", "support" ],
+           enum: AgentConfig.lanes,
            description: "Which agent domain should handle this turn"
 
     # Compact intent label for the chosen agent (e.g., business_hours, start_order, refund_request)
