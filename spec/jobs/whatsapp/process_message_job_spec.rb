@@ -55,7 +55,6 @@ RSpec.describe Whatsapp::ProcessMessageJob, type: :job do
             intent_result: { label: :other, confidence: 0.5 },
             actions: { welcome_message_sent: false }
           }
-          allow_any_instance_of(Whatsapp::Intent::Handler).to receive(:call).and_return(handler_result)
 
           # No message record created, so emit_audio_received_event should return early
           expect(Stream::Publisher).not_to receive(:new)
@@ -68,7 +67,6 @@ RSpec.describe Whatsapp::ProcessMessageJob, type: :job do
             intent_result: { label: :other, confidence: 0.5 },
             actions: { welcome_message_sent: false }
           }
-          allow_any_instance_of(Whatsapp::Intent::Handler).to receive(:call).and_return(handler_result)
 
           # Create message but no media
           WaMessage.create!(
@@ -93,10 +91,6 @@ RSpec.describe Whatsapp::ProcessMessageJob, type: :job do
         text_msg = { "id" => "wamid.text123", "timestamp" => "1749416383", "type" => "text", "text" => { "body" => "hello" } }
 
         allow_any_instance_of(Whatsapp::Processors::TextProcessor).to receive(:call)
-        allow_any_instance_of(Whatsapp::Intent::Handler).to receive(:call).and_return({
-          intent_result: { label: :other, confidence: 0.5 },
-          actions: { welcome_message_sent: false }
-        })
 
         expect(Stream::Publisher).not_to receive(:new)
 

@@ -18,7 +18,7 @@ module State
 
       # sanity checks
       lane = meta["current_lane"]
-      raise Invalid, "invalid lane #{lane}" unless %w[info commerce support].include?(lane)
+      raise Invalid, "invalid lane #{lane}" unless %w[info product commerce support].include?(lane)
 
       true
     end

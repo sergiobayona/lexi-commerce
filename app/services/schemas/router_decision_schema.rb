@@ -15,7 +15,7 @@ module Schemas
   class RouterDecisionSchema < RubyLLM::Schema
     # Which agent domain should handle this turn
     string :lane,
-           enum: [ "info", "commerce", "support" ],
+           enum: [ "info", "product", "commerce", "support" ],
            description: "Which agent domain should handle this turn"
 
     # Compact intent label for the chosen agent (e.g., business_hours, start_order, refund_request)

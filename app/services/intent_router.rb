@@ -28,9 +28,10 @@ class IntentRouter
     prompt = "User message: #{turn[:text]}\nState: #{compact_state_summary(state)}"
 
     # 3) Call LLM with structured schema output
-    result = @client.with_instructions(system_prompt).with_schema(Schemas::RouterDecisionSchema).ask(prompt)
+    response = @client.with_instructions(system_prompt).with_schema(Schemas::RouterDecisionSchema).ask(prompt)
 
-    # 4) Parse & clamp (with_schema returns data directly, not wrapped in "arguments")
+    # 4) Parse & clamp (with_schema returns response with .content as hash)
+    result = response.content
     lane           = result["lane"]
     intent         = (result["intent"] || "general_info").to_s
     confidence     = clamp(result["confidence"].to_f, 0.0, 1.0)

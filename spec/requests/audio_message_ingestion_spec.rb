@@ -197,16 +197,6 @@ RSpec.describe "Audio Message Ingestion", type: :request do
       end
     end
 
-    context "audio event emission" do
-      before do
-        # Mock intent handler to not send welcome message
-        allow_any_instance_of(Whatsapp::Intent::Handler).to receive(:call).and_return({
-          intent_result: { label: :other, confidence: 0.5 },
-          actions: { welcome_message_sent: false }
-        })
-      end
-    end
-
     context "idempotency" do
       it "handles duplicate webhook deliveries" do
         # Mock download and transcription
