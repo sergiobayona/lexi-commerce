@@ -9,10 +9,10 @@ module State
     # Create a fresh state with contextual seed data
     def new_session(tenant_id:, wa_id:, locale: "es-CO", timezone: "America/Bogota")
       s = @contract.blank
-      s["meta"]["tenant_id"] = tenant_id
-      s["meta"]["wa_id"]     = wa_id
-      s["meta"]["locale"]    = locale
-      s["meta"]["timezone"]  = timezone
+      s["tenant_id"] = tenant_id
+      s["wa_id"]     = wa_id
+      s["locale"]    = locale
+      s["timezone"]  = timezone
       s
     end
 

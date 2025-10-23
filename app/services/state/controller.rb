@@ -82,8 +82,6 @@ module State
 
         # 11. Handle lane handoff if requested
         if agent_response.handoff
-          # Reload state to get updated version after patch
-          state = load_or_create_session(turn)
           handle_lane_handoff(
             session_key: session_key,
             state: state,
@@ -185,15 +183,15 @@ module State
     # ============================================
 
     def append_turn_to_dialogue(state, turn)
-      state["dialogue"] ||= { "turns" => [] }
-      state["dialogue"]["turns"] << {
+      state["turns"] ||= []
+      state["turns"] << {
         "role" => "user",
         "message_id" => turn[:message_id],
         "text" => turn[:text],
         "payload" => turn[:payload],
         "timestamp" => turn[:timestamp] || Time.now.utc.iso8601
       }
-      state["dialogue"]["last_user_msg_id"] = turn[:message_id]
+      state["last_user_msg_id"] = turn[:message_id]
     end
 
     # ============================================
@@ -201,34 +199,23 @@ module State
     # ============================================
 
     def build_complete_patch(state:, agent_response:)
+      # Start with dialogue/routing fields that changed
       complete_patch = {
-        "dialogue" => state["dialogue"],
-        "meta" => state["meta"]
+        "turns" => state["turns"],
+        "last_user_msg_id" => state["last_user_msg_id"],
+        "current_lane" => state["current_lane"],
+        "sticky_until" => state["sticky_until"]
       }
 
-      # Deep merge agent's state patch (if any) to preserve existing keys
-      if agent_response.state_patch
-        agent_response.state_patch.each do |key, value|
-          if complete_patch[key].is_a?(Hash) && value.is_a?(Hash)
-            complete_patch[key] = complete_patch[key].merge(value)
-          else
-            complete_patch[key] = value
-          end
-        end
-      end
+      # Simple merge agent's flat patch
+      complete_patch.merge!(agent_response.state_patch) if agent_response.state_patch
 
       complete_patch
     end
 
     def apply_complete_patch!(state, patch)
-      # Deep merge patch into state
-      patch.each do |key, value|
-        if state[key].is_a?(Hash) && value.is_a?(Hash)
-          state[key] = state[key].merge(value)
-        else
-          state[key] = value
-        end
-      end
+      # Simple flat merge - no deep merging needed
+      state.merge!(patch)
     end
 
     def save_state!(session_key, state)
@@ -240,8 +227,8 @@ module State
       target_lane = handoff[:to_lane]
       return unless AgentConfig.valid_lane?(target_lane)
 
-      state["meta"]["current_lane"] = target_lane
-      state["meta"]["sticky_until"] = nil # Clear stickiness on handoff
+      state["current_lane"] = target_lane
+      state["sticky_until"] = nil # Clear stickiness on handoff
 
       # Optionally carry over specific state
       if handoff[:carry_state]

@@ -59,9 +59,8 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
         expect(redis.exists?(session_key)).to be true
 
         state = JSON.parse(redis.get(session_key))
-        expect(state["meta"]["tenant_id"]).to eq(wa_business_number.phone_number_id)
-        expect(state["meta"]["wa_id"]).to eq(wa_contact.wa_id)
-        expect(state["version"]).to be > 0
+        expect(state["tenant_id"]).to eq(wa_business_number.phone_number_id)
+        expect(state["wa_id"]).to eq(wa_contact.wa_id)
       end
 
       it "appends turn to dialogue history" do
@@ -70,7 +69,7 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
         session_key = "session:#{wa_business_number.phone_number_id}:#{wa_contact.wa_id}"
         state = JSON.parse(redis.get(session_key))
 
-        turns = state.dig("dialogue", "turns")
+        turns = state["turns"]
         expect(turns).to be_an(Array)
         expect(turns.size).to be >= 1
 
@@ -189,30 +188,7 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
         session_key = "session:#{wa_business_number.phone_number_id}:#{wa_contact.wa_id}"
         state = JSON.parse(redis.get(session_key))
 
-        expect(state.dig("meta", "current_lane")).to eq("info")
-      end
-
-      it "increments state version" do
-        described_class.new.perform(wa_message)
-
-        session_key = "session:#{wa_business_number.phone_number_id}:#{wa_contact.wa_id}"
-        state = JSON.parse(redis.get(session_key))
-        initial_version = state["version"]
-
-        # Process another message
-        wa_message2 = create(:wa_message,
-          wa_contact: wa_contact,
-          wa_business_number: wa_business_number,
-          provider_message_id: "wamid.test456",
-          type_name: "text",
-          body_text: "Segunda mensaje",
-          direction: "inbound"
-        )
-
-        described_class.new.perform(wa_message2)
-
-        state = JSON.parse(redis.get(session_key))
-        expect(state["version"]).to be > initial_version
+        expect(state["current_lane"]).to eq("info")
       end
     end
   end

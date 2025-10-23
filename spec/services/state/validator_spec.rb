@@ -9,13 +9,9 @@ RSpec.describe State::Validator do
     context "with valid state" do
       let(:valid_state) do
         {
-          "meta" => {
-            "tenant_id" => "tenant_123",
-            "wa_id" => "16505551234",
-            "current_lane" => "info"
-          },
-          "dialogue" => {},
-          "slots" => {}
+          "tenant_id" => "tenant_123",
+          "wa_id" => "16505551234",
+          "current_lane" => "info"
         }
       end
 
@@ -48,48 +44,18 @@ RSpec.describe State::Validator do
       end
     end
 
-    context "with invalid meta structure" do
-      it "raises Invalid error when meta is not a Hash" do
-        state = {
-          "meta" => "not a hash",
-          "dialogue" => {},
-          "slots" => {}
-        }
-
-        expect {
-          validator.call!(state)
-        }.to raise_error(State::Validator::Invalid, "meta missing")
-      end
-
-      it "raises Invalid error when meta is nil" do
-        state = {
-          "meta" => nil,
-          "dialogue" => {},
-          "slots" => {}
-        }
-
-        expect {
-          validator.call!(state)
-        }.to raise_error(State::Validator::Invalid, "meta missing")
-      end
-    end
-
-    context "with missing meta fields" do
+    context "with missing required fields" do
       let(:base_state) do
         {
-          "meta" => {
-            "tenant_id" => "t1",
-            "wa_id" => "wa1",
-            "current_lane" => "info"
-          },
-          "dialogue" => {},
-          "slots" => {}
+          "tenant_id" => "t1",
+          "wa_id" => "wa1",
+          "current_lane" => "info"
         }
       end
 
       it "raises Invalid error for missing tenant_id" do
-        state = base_state.deep_dup
-        state["meta"]["tenant_id"] = nil
+        state = base_state.dup
+        state["tenant_id"] = nil
 
         expect {
           validator.call!(state)
@@ -97,8 +63,8 @@ RSpec.describe State::Validator do
       end
 
       it "raises Invalid error for missing wa_id" do
-        state = base_state.deep_dup
-        state["meta"]["wa_id"] = nil
+        state = base_state.dup
+        state["wa_id"] = nil
 
         expect {
           validator.call!(state)
@@ -109,19 +75,15 @@ RSpec.describe State::Validator do
     context "with invalid lane values" do
       let(:base_state) do
         {
-          "meta" => {
-            "tenant_id" => "t1",
-            "wa_id" => "wa1",
-            "current_lane" => "info"
-          },
-          "dialogue" => {},
-          "slots" => {}
+          "tenant_id" => "t1",
+          "wa_id" => "wa1",
+          "current_lane" => "info"
         }
       end
 
       it "raises Invalid error for invalid lane" do
-        state = base_state.deep_dup
-        state["meta"]["current_lane"] = "invalid_lane"
+        state = base_state.dup
+        state["current_lane"] = "invalid_lane"
 
         expect {
           validator.call!(state)
@@ -129,8 +91,8 @@ RSpec.describe State::Validator do
       end
 
       it "raises Invalid error for empty string lane" do
-        state = base_state.deep_dup
-        state["meta"]["current_lane"] = ""
+        state = base_state.dup
+        state["current_lane"] = ""
 
         expect {
           validator.call!(state)
@@ -141,40 +103,36 @@ RSpec.describe State::Validator do
     context "with valid lanes" do
       let(:base_state) do
         {
-          "meta" => {
-            "tenant_id" => "t1",
-            "wa_id" => "wa1",
-            "current_lane" => "info"
-          },
-          "dialogue" => {},
-          "slots" => {}
+          "tenant_id" => "t1",
+          "wa_id" => "wa1",
+          "current_lane" => "info"
         }
       end
 
       it "accepts 'info' lane" do
-        state = base_state.deep_dup
-        state["meta"]["current_lane"] = "info"
+        state = base_state.dup
+        state["current_lane"] = "info"
 
         expect(validator.call!(state)).to be true
       end
 
       it "accepts 'commerce' lane" do
-        state = base_state.deep_dup
-        state["meta"]["current_lane"] = "commerce"
+        state = base_state.dup
+        state["current_lane"] = "commerce"
 
         expect(validator.call!(state)).to be true
       end
 
       it "accepts 'support' lane" do
-        state = base_state.deep_dup
-        state["meta"]["current_lane"] = "support"
+        state = base_state.dup
+        state["current_lane"] = "support"
 
         expect(validator.call!(state)).to be true
       end
 
       it "accepts 'product' lane" do
-        state = base_state.deep_dup
-        state["meta"]["current_lane"] = "product"
+        state = base_state.dup
+        state["current_lane"] = "product"
 
         expect(validator.call!(state)).to be true
       end
@@ -183,28 +141,17 @@ RSpec.describe State::Validator do
     context "with extra fields" do
       let(:state_with_extras) do
         {
-          "meta" => {
-            "tenant_id" => "t1",
-            "wa_id" => "wa1",
-            "current_lane" => "info",
-            "extra_field" => "extra_value",
-            "flags" => { "vip" => true }
-          },
-          "dialogue" => {
-            "turns" => [ { "role" => "user", "text" => "hi" } ],
-            "extra_dialogue_field" => "value"
-          },
-          "slots" => {
-            "location_id" => "loc123",
-            "extra_slot" => "value"
-          },
-          "commerce" => {
-            "cart" => { "items" => [] }
-          },
-          "support" => {
-            "active_case_id" => nil
-          },
-          "extra_top_level" => "value"
+          "tenant_id" => "t1",
+          "wa_id" => "wa1",
+          "current_lane" => "info",
+          "extra_field" => "extra_value",
+          "vip" => true,
+          "turns" => [ { "role" => "user", "text" => "hi" } ],
+          "location_id" => "loc123",
+          "commerce_state" => "browsing",
+          "cart_items" => [],
+          "active_case_id" => nil,
+          "custom_data" => { "foo" => "bar" }
         }
       end
 
@@ -216,8 +163,8 @@ RSpec.describe State::Validator do
     context "edge cases" do
       it "validates state from Contract.blank" do
         state = State::Contract.blank
-        state["meta"]["tenant_id"] = "t1"
-        state["meta"]["wa_id"] = "wa1"
+        state["tenant_id"] = "t1"
+        state["wa_id"] = "wa1"
 
         expect(validator.call!(state)).to be true
       end

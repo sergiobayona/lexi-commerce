@@ -59,7 +59,7 @@ RSpec.describe Agents::InfoAgent do
         expect(Rails.logger).to receive(:error).with(anything) # backtrace
 
         response = agent.ask("Question")
-        expect(response[:error]).to include("Unable to process your request")
+        expect(response).to include("Unable to process your request")
       end
     end
   end
@@ -84,8 +84,8 @@ RSpec.describe Agents::InfoAgent do
     it "provides tool-specific guidance" do
       instructions = agent.send(:system_instructions)
 
-      expect(instructions).to include("day parameter")
-      expect(instructions).to include("latitude")
+      expect(instructions).to include("'day' parameter")
+      expect(instructions).to include("'latitude'")
       expect(instructions).to include("category")
     end
   end

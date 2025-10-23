@@ -15,50 +15,47 @@ RSpec.describe State::Builder do
       end
 
       it "creates a new session with provided tenant_id and wa_id" do
-        expect(session["meta"]["tenant_id"]).to eq("tenant_123")
-        expect(session["meta"]["wa_id"]).to eq("16505551234")
+        expect(session["tenant_id"]).to eq("tenant_123")
+        expect(session["wa_id"]).to eq("16505551234")
       end
 
       it "applies default locale" do
-        expect(session["meta"]["locale"]).to eq("es-CO")
+        expect(session["locale"]).to eq("es-CO")
       end
 
       it "applies default timezone" do
-        expect(session["meta"]["timezone"]).to eq("America/Bogota")
+        expect(session["timezone"]).to eq("America/Bogota")
       end
 
-      it "includes all required sections from Contract" do
-        expect(session).to have_key("meta")
-        expect(session).to have_key("dialogue")
-        expect(session).to have_key("slots")
-        expect(session).to have_key("commerce")
-        expect(session).to have_key("support")
+      it "includes default routing fields" do
+        expect(session["current_lane"]).to eq("info")
+        expect(session["sticky_until"]).to be_nil
       end
 
-      it "includes default meta fields" do
-        expect(session["meta"]["current_lane"]).to eq("info")
-        expect(session["meta"]["flags"]).to eq({ "human_handoff" => false, "vip" => false })
+      it "includes default customer flags" do
+        expect(session["human_handoff"]).to be false
+        expect(session["vip"]).to be false
       end
 
       it "includes empty dialogue structure" do
-        expect(session["dialogue"]["turns"]).to eq([])
-        expect(session["dialogue"]["last_user_msg_id"]).to be_nil
-        expect(session["dialogue"]["last_assistant_msg_id"]).to be_nil
+        expect(session["turns"]).to eq([])
+        expect(session["last_user_msg_id"]).to be_nil
+        expect(session["last_assistant_msg_id"]).to be_nil
       end
 
       it "includes default slots" do
-        expect(session["slots"]["phone_verified"]).to be false
-        expect(session["slots"]["language_locked"]).to be false
+        expect(session["phone_verified"]).to be false
+        expect(session["language_locked"]).to be false
       end
 
       it "includes default commerce state" do
-        expect(session["commerce"]["state"]).to eq("browsing")
-        expect(session["commerce"]["cart"]["items"]).to eq([])
-        expect(session["commerce"]["cart"]["currency"]).to eq("COP")
+        expect(session["commerce_state"]).to eq("browsing")
+        expect(session["cart_items"]).to eq([])
+        expect(session["cart_currency"]).to eq("COP")
       end
 
       it "includes default support state" do
-        expect(session["support"]["active_case_id"]).to be_nil
+        expect(session["active_case_id"]).to be_nil
       end
     end
 
@@ -73,16 +70,16 @@ RSpec.describe State::Builder do
       end
 
       it "applies custom locale" do
-        expect(session["meta"]["locale"]).to eq("en-US")
+        expect(session["locale"]).to eq("en-US")
       end
 
       it "applies custom timezone" do
-        expect(session["meta"]["timezone"]).to eq("America/New_York")
+        expect(session["timezone"]).to eq("America/New_York")
       end
 
       it "still sets tenant_id and wa_id correctly" do
-        expect(session["meta"]["tenant_id"]).to eq("tenant_456")
-        expect(session["meta"]["wa_id"]).to eq("16505559999")
+        expect(session["tenant_id"]).to eq("tenant_456")
+        expect(session["wa_id"]).to eq("16505559999")
       end
     end
 
@@ -91,19 +88,19 @@ RSpec.describe State::Builder do
         session1 = builder.new_session(tenant_id: "t1", wa_id: "wa1")
         session2 = builder.new_session(tenant_id: "t2", wa_id: "wa2")
 
-        session1["meta"]["current_lane"] = "commerce"
-        session1["commerce"]["cart"]["items"] << { "id" => "item1" }
+        session1["current_lane"] = "commerce"
+        session1["cart_items"] << { "id" => "item1" }
 
-        expect(session2["meta"]["current_lane"]).to eq("info")
-        expect(session2["commerce"]["cart"]["items"]).to eq([])
+        expect(session2["current_lane"]).to eq("info")
+        expect(session2["cart_items"]).to eq([])
       end
 
       it "does not mutate Contract defaults" do
         original_defaults = State::Contract::DEFAULTS.deep_dup
 
         session = builder.new_session(tenant_id: "t1", wa_id: "wa1")
-        session["meta"]["flags"]["vip"] = true
-        session["dialogue"]["turns"] << { "role" => "user", "text" => "hi" }
+        session["vip"] = true
+        session["turns"] << { "role" => "user", "text" => "hi" }
 
         expect(State::Contract::DEFAULTS).to eq(original_defaults)
       end
@@ -114,66 +111,57 @@ RSpec.describe State::Builder do
     context "with valid JSON string" do
       let(:json_state) do
         {
-          "meta" => {
-            "tenant_id" => "tenant_789",
-            "wa_id" => "16505554321",
-            "locale" => "es-MX",
-            "timezone" => "America/Mexico_City",
-            "current_lane" => "commerce"
-          },
-          "dialogue" => {
-            "turns" => [ { "role" => "user", "text" => "hola" } ],
-            "last_user_msg_id" => "msg_123"
-          },
+          "tenant_id" => "tenant_789",
+          "wa_id" => "16505554321",
+          "locale" => "es-MX",
+          "timezone" => "America/Mexico_City",
+          "current_lane" => "commerce",
+          "turns" => [ { "role" => "user", "text" => "hola" } ],
+          "last_user_msg_id" => "msg_123"
         }.to_json
       end
 
       it "parses JSON and hydrates state" do
         state = builder.from_json(json_state)
 
-        expect(state["meta"]["tenant_id"]).to eq("tenant_789")
-        expect(state["meta"]["wa_id"]).to eq("16505554321")
-        expect(state["meta"]["locale"]).to eq("es-MX")
-        expect(state["meta"]["current_lane"]).to eq("commerce")
+        expect(state["tenant_id"]).to eq("tenant_789")
+        expect(state["wa_id"]).to eq("16505554321")
+        expect(state["locale"]).to eq("es-MX")
+        expect(state["current_lane"]).to eq("commerce")
       end
 
       it "preserves existing values" do
         state = builder.from_json(json_state)
 
-        expect(state["dialogue"]["turns"].size).to eq(1)
-        expect(state["dialogue"]["turns"].first["role"]).to eq("user")
-        expect(state["dialogue"]["last_user_msg_id"]).to eq("msg_123")
+        expect(state["turns"].size).to eq(1)
+        expect(state["turns"].first["role"]).to eq("user")
+        expect(state["last_user_msg_id"]).to eq("msg_123")
       end
 
       it "fills missing defaults from Contract" do
         state = builder.from_json(json_state)
 
-        # slots section not in JSON, should be filled with defaults
-        expect(state["slots"]).to be_present
-        expect(state["slots"]["phone_verified"]).to be false
-        expect(state["slots"]["language_locked"]).to be false
-
-        # commerce section not in JSON
-        expect(state["commerce"]).to be_present
-        expect(state["commerce"]["state"]).to eq("browsing")
-
-        # support section not in JSON
-        expect(state["support"]).to be_present
-        expect(state["support"]["active_case_id"]).to be_nil
+        # Fields not in JSON should be filled with defaults
+        expect(state["phone_verified"]).to be false
+        expect(state["language_locked"]).to be false
+        expect(state["commerce_state"]).to eq("browsing")
+        expect(state["active_case_id"]).to be_nil
       end
 
-      it "fills missing nested defaults" do
+      it "fills missing fields" do
         partial_json = {
-          "meta" => { "tenant_id" => "t1", "wa_id" => "wa1" },
+          "tenant_id" => "t1",
+          "wa_id" => "wa1"
         }.to_json
 
         state = builder.from_json(partial_json)
 
-        # meta fields should be filled
-        expect(state["meta"]["locale"]).to eq("es-CO")
-        expect(state["meta"]["timezone"]).to eq("America/Bogota")
-        expect(state["meta"]["current_lane"]).to eq("info")
-        expect(state["meta"]["flags"]).to eq({ "human_handoff" => false, "vip" => false })
+        # Missing fields should be filled
+        expect(state["locale"]).to eq("es-CO")
+        expect(state["timezone"]).to eq("America/Bogota")
+        expect(state["current_lane"]).to eq("info")
+        expect(state["human_handoff"]).to be false
+        expect(state["vip"]).to be false
       end
     end
 
@@ -181,9 +169,10 @@ RSpec.describe State::Builder do
       it "creates blank state with all defaults" do
         state = builder.from_json(nil)
 
-        expect(state["meta"]).to be_present
-        expect(state["dialogue"]).to be_present
-        expect(state["slots"]).to be_present
+        expect(state["tenant_id"]).to be_nil
+        expect(state["wa_id"]).to be_nil
+        expect(state["locale"]).to eq("es-CO")
+        expect(state["turns"]).to eq([])
       end
     end
 
@@ -191,9 +180,10 @@ RSpec.describe State::Builder do
       it "creates blank state with all defaults" do
         state = builder.from_json("")
 
-        expect(state["meta"]).to be_present
-        expect(state["dialogue"]).to be_present
-        expect(state["slots"]).to be_present
+        expect(state["tenant_id"]).to be_nil
+        expect(state["wa_id"]).to be_nil
+        expect(state["locale"]).to eq("es-CO")
+        expect(state["turns"]).to eq([])
       end
     end
 
@@ -201,9 +191,10 @@ RSpec.describe State::Builder do
       it "creates blank state with all defaults" do
         state = builder.from_json("{")
 
-        expect(state["meta"]).to be_present
-        expect(state["dialogue"]).to be_present
-        expect(state["slots"]).to be_present
+        expect(state["tenant_id"]).to be_nil
+        expect(state["wa_id"]).to be_nil
+        expect(state["locale"]).to eq("es-CO")
+        expect(state["turns"]).to eq([])
       end
     end
 
@@ -216,65 +207,55 @@ RSpec.describe State::Builder do
     end
 
     context "deep merge behavior" do
-      it "merges nested hashes recursively" do
+      it "merges flat hashes" do
         json_state = {
-          "meta" => {
-            "tenant_id" => "new_tenant",
-            "custom_field" => "custom_value"
-          },
-          "commerce" => {
-            "cart" => {
-              "items" => [ { "id" => 1 } ],
-              "subtotal_cents" => 500
-            }
-          },
+          "tenant_id" => "new_tenant",
+          "custom_field" => "custom_value",
+          "cart_items" => [ { "id" => 1 } ],
+          "cart_subtotal_cents" => 500
         }.to_json
 
         state = builder.from_json(json_state)
 
         # Preserves new values
-        expect(state["meta"]["tenant_id"]).to eq("new_tenant")
-        expect(state["meta"]["custom_field"]).to eq("custom_value")
+        expect(state["tenant_id"]).to eq("new_tenant")
+        expect(state["custom_field"]).to eq("custom_value")
 
-        # Fills missing meta defaults
-        expect(state["meta"]["locale"]).to eq("es-CO")
-        expect(state["meta"]["timezone"]).to eq("America/Bogota")
+        # Fills missing defaults
+        expect(state["locale"]).to eq("es-CO")
+        expect(state["timezone"]).to eq("America/Bogota")
 
-        # Preserves nested commerce values
-        expect(state["commerce"]["cart"]["items"].size).to eq(1)
-        expect(state["commerce"]["cart"]["subtotal_cents"]).to eq(500)
+        # Preserves values from JSON
+        expect(state["cart_items"].size).to eq(1)
+        expect(state["cart_subtotal_cents"]).to eq(500)
 
-        # Fills missing nested defaults
-        expect(state["commerce"]["cart"]["currency"]).to eq("COP")
-        expect(state["commerce"]["state"]).to eq("browsing")
+        # Fills missing defaults
+        expect(state["cart_currency"]).to eq("COP")
+        expect(state["commerce_state"]).to eq("browsing")
       end
 
       it "replaces arrays rather than merging" do
         json_state = {
-          "dialogue" => {
-            "turns" => [ { "role" => "user", "text" => "hi" } ]
-          },
+          "turns" => [ { "role" => "user", "text" => "hi" } ]
         }.to_json
 
         state = builder.from_json(json_state)
 
         # Array should be replaced, not merged with default empty array
-        expect(state["dialogue"]["turns"]).to eq([ { "role" => "user", "text" => "hi" } ])
+        expect(state["turns"]).to eq([ { "role" => "user", "text" => "hi" } ])
       end
 
       it "replaces scalar values rather than merging" do
         json_state = {
-          "meta" => {
-            "tenant_id" => "t1",
-            "wa_id" => "wa1",
-            "current_lane" => "support"
-          },
+          "tenant_id" => "t1",
+          "wa_id" => "wa1",
+          "current_lane" => "support"
         }.to_json
 
         state = builder.from_json(json_state)
 
         # Scalar should be replaced, not use default
-        expect(state["meta"]["current_lane"]).to eq("support")
+        expect(state["current_lane"]).to eq("support")
       end
     end
   end
@@ -287,7 +268,6 @@ RSpec.describe State::Builder do
 
       expect(State::Contract).to have_received(:blank)
     end
-
   end
 
   describe "thread safety" do
@@ -298,8 +278,8 @@ RSpec.describe State::Builder do
       5.times do |i|
         threads << Thread.new do
           state = builder.new_session(tenant_id: "tenant_#{i}", wa_id: "wa_#{i}")
-          state["meta"]["current_lane"] = "lane_#{i}"
-          results << state["meta"]["current_lane"]
+          state["current_lane"] = "lane_#{i}"
+          results << state["current_lane"]
         end
       end
 
@@ -310,44 +290,43 @@ RSpec.describe State::Builder do
   end
 
   describe "edge cases" do
-    it "handles state with missing version field" do
+    it "handles state with missing fields" do
       json_state = {
-        "meta" => { "tenant_id" => "t1", "wa_id" => "wa1" }
+        "tenant_id" => "t1",
+        "wa_id" => "wa1"
       }.to_json
 
       state = builder.from_json(json_state)
 
       expect(state).to be_a(Hash)
-      expect(state["meta"]["tenant_id"]).to eq("t1")
+      expect(state["tenant_id"]).to eq("t1")
     end
 
     it "handles empty JSON object" do
       state = builder.from_json("{}")
 
-      expect(state["meta"]).to be_present
-      expect(state["dialogue"]).to be_present
-      expect(state["slots"]).to be_present
+      expect(state["tenant_id"]).to be_nil
+      expect(state["locale"]).to eq("es-CO")
+      expect(state["turns"]).to eq([])
     end
 
-    it "handles deeply nested custom fields" do
+    it "handles custom fields" do
       json_state = {
-        "meta" => {
-          "tenant_id" => "t1",
-          "wa_id" => "wa1",
-          "custom" => {
-            "level1" => {
-              "level2" => {
-                "value" => "deep"
-              }
+        "tenant_id" => "t1",
+        "wa_id" => "wa1",
+        "custom" => {
+          "level1" => {
+            "level2" => {
+              "value" => "deep"
             }
           }
-        },
+        }
       }.to_json
 
       state = builder.from_json(json_state)
 
-      expect(state["meta"]["custom"]["level1"]["level2"]["value"]).to eq("deep")
-      expect(state["meta"]["locale"]).to eq("es-CO") # Still has defaults
+      expect(state["custom"]["level1"]["level2"]["value"]).to eq("deep")
+      expect(state["locale"]).to eq("es-CO") # Still has defaults
     end
   end
 end

@@ -17,7 +17,7 @@ class IntentRouter
     # 1) If we're still sticky, honor it (no LLM round-trip)
     if sticky_lane?(state)
       return RouterDecision.new(
-        state.dig("meta", "current_lane"),
+        state["current_lane"],
         "continue_flow",
         0.95,
         remaining_sticky(state),
@@ -46,26 +46,25 @@ class IntentRouter
     RouterDecision.new("info", "general_info", 0.3, 0, [ "router_error: #{e.class}\n #{e.backtrace}" ])
   end
 
-  # Optionally update stickiness in state.meta from orchestrator after route()
+  # Optionally update stickiness in state from orchestrator after route()
   def update_sticky!(state:, lane:, seconds:)
     return if seconds <= 0
-    state["meta"]                 ||= {}
-    state["meta"]["current_lane"] = lane
-    state["meta"]["sticky_until"] = (@now.call + seconds).iso8601
+    state["current_lane"] = lane
+    state["sticky_until"] = (@now.call + seconds).iso8601
   end
 
   private
 
   def sticky_lane?(state)
-    until_ts = state.dig("meta", "sticky_until")
-    lane     = state.dig("meta", "current_lane")
+    until_ts = state["sticky_until"]
+    lane     = state["current_lane"]
     until_ts && lane && Time.parse(until_ts) > @now.call
   rescue ArgumentError
     false
   end
 
   def remaining_sticky(state)
-    until_ts = state.dig("meta", "sticky_until")
+    until_ts = state["sticky_until"]
     return 0 unless until_ts
     [ Time.parse(until_ts) - @now.call, 0 ].max.to_i
   rescue ArgumentError
@@ -82,21 +81,16 @@ class IntentRouter
 
   # Keep the state snapshot tiny and privacy-safe
   def compact_state_summary(state)
-    meta = state.fetch("meta", {})
-    slots = state.fetch("slots", {})
-    commerce = state.fetch("commerce", {})
     {
-      tenant_id: meta["tenant_id"],
-      locale: meta["locale"],
-      current_lane: meta["current_lane"],
-      sticky_until: meta["sticky_until"],
-      known_slots: {
-        location_id: slots["location_id"],
-        fulfillment: slots["fulfillment"],
-        address_present: !slots["address"].nil?
-      },
-      commerce_state: commerce["state"],
-      cart_items: commerce.dig("cart", "items")&.size || 0
+      tenant_id: state["tenant_id"],
+      locale: state["locale"],
+      current_lane: state["current_lane"],
+      sticky_until: state["sticky_until"],
+      location_id: state["location_id"],
+      fulfillment: state["fulfillment"],
+      address_present: !state["address"].nil?,
+      commerce_state: state["commerce_state"],
+      cart_items_count: state["cart_items"]&.size || 0
     }.to_json
   end
 

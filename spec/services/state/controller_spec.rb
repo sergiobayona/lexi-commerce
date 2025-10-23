@@ -55,7 +55,7 @@ RSpec.describe State::Controller do
       let(:agent_response) do
         Agents::BaseAgent::AgentResponse.new(
           messages: [{ type: "text", text: { body: "Hello!" } }],
-          state_patch: { "dialogue" => { "greeted" => true } },
+          state_patch: { "greeted" => true },
           handoff: nil
         )
       end
@@ -87,8 +87,8 @@ RSpec.describe State::Controller do
         expect(session_json).to be_present
 
         state = JSON.parse(session_json)
-        expect(state["meta"]["tenant_id"]).to eq("tenant_123")
-        expect(state["meta"]["wa_id"]).to eq("16505551234")
+        expect(state["tenant_id"]).to eq("tenant_123")
+        expect(state["wa_id"]).to eq("16505551234")
         expect(state["updated_at"]).to be_present
       end
 
@@ -115,7 +115,7 @@ RSpec.describe State::Controller do
         session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
         state = JSON.parse(redis.get(session_key))
 
-        turns = state.dig("dialogue", "turns")
+        turns = state["turns"]
         expect(turns).to be_an(Array)
         expect(turns.size).to be >= 1
 
@@ -161,7 +161,7 @@ RSpec.describe State::Controller do
         session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
         state = JSON.parse(redis.get(session_key))
 
-        expect(state.dig("dialogue", "greeted")).to be true
+        expect(state["greeted"]).to be true
       end
 
       it "marks message as processed" do
@@ -229,7 +229,7 @@ RSpec.describe State::Controller do
       let(:agent_response) do
         Agents::BaseAgent::AgentResponse.new(
           messages: [{ type: "text", text: { body: "Your cart is empty" } }],
-          state_patch: { "commerce" => { "last_view" => Time.now.utc.iso8601 } },
+          state_patch: { "last_view" => Time.now.utc.iso8601 },
           handoff: nil
         )
       end
@@ -261,14 +261,14 @@ RSpec.describe State::Controller do
       end
 
       it "preserves existing state fields" do
-        existing_state["meta"]["custom_field"] = "custom_value"
+        existing_state["custom_field"] = "custom_value"
         session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
         redis.set(session_key, existing_state.to_json)
 
         controller.handle_turn(base_turn)
 
         updated_state = JSON.parse(redis.get(session_key))
-        expect(updated_state["meta"]["custom_field"]).to eq("custom_value")
+        expect(updated_state["custom_field"]).to eq("custom_value")
       end
     end
 
@@ -284,7 +284,7 @@ RSpec.describe State::Controller do
           handoff: {
             to_lane: "commerce",
             carry_state: {
-              "slots" => { "initiated_from" => "info" }
+              "initiated_from" => "info"
             }
           }
         )
@@ -303,7 +303,7 @@ RSpec.describe State::Controller do
         session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
         state = JSON.parse(redis.get(session_key))
 
-        expect(state["meta"]["current_lane"]).to eq("commerce")
+        expect(state["current_lane"]).to eq("commerce")
       end
 
       it "clears sticky_until on handoff" do
@@ -312,7 +312,7 @@ RSpec.describe State::Controller do
         session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
         state = JSON.parse(redis.get(session_key))
 
-        expect(state["meta"]["sticky_until"]).to be_nil
+        expect(state["sticky_until"]).to be_nil
       end
 
       it "carries over specified state" do
@@ -321,7 +321,7 @@ RSpec.describe State::Controller do
         session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
         state = JSON.parse(redis.get(session_key))
 
-        expect(state.dig("slots", "initiated_from")).to eq("info")
+        expect(state["initiated_from"]).to eq("info")
       end
     end
 
@@ -329,7 +329,7 @@ RSpec.describe State::Controller do
       before do
         # Create corrupted state (invalid structure)
         session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
-        corrupted_state = { "meta" => "invalid" }
+        corrupted_state = { "tenant_id" => nil }
         redis.set(session_key, corrupted_state.to_json)
       end
 
@@ -347,8 +347,8 @@ RSpec.describe State::Controller do
         state = JSON.parse(redis.get(session_key))
 
         # Should be fresh state
-        expect(state["meta"]).to be_a(Hash)
-        expect(state["meta"]["tenant_id"]).to eq("tenant_123")
+        expect(state["tenant_id"]).to eq("tenant_123")
+        expect(state["wa_id"]).to eq("16505551234")
       end
 
       it "logs validation error" do
@@ -399,7 +399,7 @@ RSpec.describe State::Controller do
       let(:agent_response) do
         Agents::BaseAgent::AgentResponse.new(
           messages: [{ type: "text", text: { body: "Added to cart" } }],
-          state_patch: { "commerce" => { "cart" => { "items" => [1] } } },
+          state_patch: { "cart_items" => [1] },
           handoff: nil
         )
       end

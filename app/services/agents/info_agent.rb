@@ -34,10 +34,8 @@ module Agents
       respond(
         messages: text_message(response),
         state_patch: {
-          "dialogue" => {
-            "last_info_query" => question,
-            "last_interaction" => Time.now.utc.iso8601
-          }
+          "last_info_query" => question,
+          "last_interaction" => Time.now.utc.iso8601
         }
       )
     rescue StandardError => e
