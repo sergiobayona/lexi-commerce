@@ -11,7 +11,6 @@ module State
 
       # Routing
       "current_lane" => AgentConfig.default_lane,
-      "sticky_until" => nil,
 
       # Customer
       "customer_id"     => nil,

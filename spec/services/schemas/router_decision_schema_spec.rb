@@ -15,10 +15,6 @@ RSpec.describe Schemas::RouterDecisionSchema do
       expect(described_class.instance_variable_get(:@properties)).to include(:confidence)
     end
 
-    it "defines required integer field" do
-      expect(described_class.instance_variable_get(:@properties)).to include(:sticky_seconds)
-    end
-
     it "defines required array field" do
       expect(described_class.instance_variable_get(:@properties)).to include(:reasoning)
     end
@@ -53,7 +49,6 @@ RSpec.describe Schemas::RouterDecisionSchema do
         "lane" => "commerce",
         "intent" => "start_order",
         "confidence" => 0.85,
-        "sticky_seconds" => 120,
         "reasoning" => [ "User mentioned ordering", "Commerce keywords detected" ]
       })
 
@@ -67,7 +62,6 @@ RSpec.describe Schemas::RouterDecisionSchema do
         "lane" => "commerce",
         "intent" => "start_order",
         "confidence" => 0.85,
-        "sticky_seconds" => 120,
         "reasoning" => array_including("User mentioned ordering")
       )
     end
@@ -78,7 +72,6 @@ RSpec.describe Schemas::RouterDecisionSchema do
         "lane" => "info",
         "intent" => "business_hours",
         "confidence" => 0.9,
-        "sticky_seconds" => 60,
         "reasoning" => [ "Asked about hours" ]
       }
 
@@ -95,7 +88,6 @@ RSpec.describe Schemas::RouterDecisionSchema do
         "lane" => "support",
         "intent" => "refund_request",
         "confidence" => 0.78,
-        "sticky_seconds" => 300,
         "reasoning" => [ "User mentioned refund", "Support keywords present", "Negative sentiment" ]
       }
 
@@ -108,7 +100,6 @@ RSpec.describe Schemas::RouterDecisionSchema do
         "lane",
         "intent",
         "confidence",
-        "sticky_seconds",
         "reasoning"
       )
     end
@@ -120,7 +111,6 @@ RSpec.describe Schemas::RouterDecisionSchema do
         "lane" => "info",
         "intent" => "general_info",
         "confidence" => 0.75,
-        "sticky_seconds" => 90,
         "reasoning" => [ "General inquiry" ]
       }
     end
@@ -135,10 +125,6 @@ RSpec.describe Schemas::RouterDecisionSchema do
 
     it "confidence is numeric" do
       expect(valid_response["confidence"]).to be_a(Numeric)
-    end
-
-    it "sticky_seconds is an integer" do
-      expect(valid_response["sticky_seconds"]).to be_a(Integer)
     end
 
     it "reasoning is an array" do

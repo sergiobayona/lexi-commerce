@@ -60,10 +60,6 @@ RSpec.describe State::Contract do
       it "has current_lane field with default" do
         expect(defaults["current_lane"]).to eq("info")
       end
-
-      it "has sticky_until field" do
-        expect(defaults["sticky_until"]).to be_nil
-      end
     end
 
     describe "customer fields" do
@@ -176,7 +172,7 @@ RSpec.describe State::Contract do
       it "has all expected top-level keys" do
         expected_keys = %w[
           tenant_id wa_id locale timezone
-          current_lane sticky_until
+          current_lane
           customer_id human_handoff vip
           turns last_user_msg_id last_assistant_msg_id
           location_id fulfillment address phone_verified language_locked

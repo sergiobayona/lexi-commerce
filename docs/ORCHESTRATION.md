@@ -42,8 +42,8 @@ Orchestrates conversation turns with:
 
 Determines which agent should handle a message:
 - **LLM-Powered Intent Classification** using RubyLLM with structured output
-- Returns: lane, intent, confidence, sticky_seconds, reasoning
-- Sticky sessions prevent ping-pong between lanes
+- Returns: lane, intent, confidence, reasoning
+- Evaluates intent on every turn for responsive routing
 - Graceful fallback to rule-based routing when LLM disabled or fails
 
 **Lanes:**
@@ -98,7 +98,6 @@ Session state stored in Redis with a **flat, single-level structure** for perfor
 
   # Routing
   "current_lane" => "info",
-  "sticky_until" => "2025-10-03T10:00:00Z",
 
   # Customer
   "customer_id" => nil,

@@ -28,10 +28,6 @@ module Schemas
     number :confidence,
            description: "Confidence score for the routing decision (0.0-1.0)"
 
-    # How long to pin to this lane to avoid ping-pong (0-600 seconds)
-    integer :sticky_seconds,
-            description: "How long to pin to this lane to avoid ping-pong (0-600 seconds)"
-
     # 1-3 short reasons for observability
     array :reasoning, of: :string,
           description: "1-3 short reasons for observability"

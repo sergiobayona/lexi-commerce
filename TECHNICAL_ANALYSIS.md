@@ -503,10 +503,6 @@ def system_prompt
   1. If the message contains multiple intents, choose the PRIMARY intent
   2. For greetings followed by a request, route to the request's lane
   3. Set high confidence (>0.8) only when intent is unambiguous
-  4. Use sticky_seconds to maintain conversation continuity:
-     - Commerce: 300s (cart-building flows)
-     - Support: 600s (issue resolution)
-     - Info: 0s (one-off queries)
 
   **Examples**:
   - "Hola, cuáles son sus horarios?" → lane: info, intent: business_hours, confidence: 0.95

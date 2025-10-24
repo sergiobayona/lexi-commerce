@@ -5,6 +5,5 @@
 # @attr lane [String] The lane to route to (info, commerce, support)
 # @attr intent [String] The specific intent identified within the lane
 # @attr confidence [Float] Confidence score for the routing decision (0.0-1.0)
-# @attr sticky_seconds [Integer] How long to keep the user in this lane
 # @attr reasons [Array<String>] List of reasons/signals that led to this decision
-RouterDecision = Data.define(:lane, :intent, :confidence, :sticky_seconds, :reasons)
+RouterDecision = Data.define(:lane, :intent, :confidence, :reasons)

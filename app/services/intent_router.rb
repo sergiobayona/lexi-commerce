@@ -14,62 +14,26 @@ class IntentRouter
   # turn: { text:, payload:, timestamp:, tenant_id:, wa_id:, message_id: }
   # state: Contract-shaped session hash
   def route(turn:, state:)
-    # 1) If we're still sticky, honor it (no LLM round-trip)
-    if sticky_lane?(state)
-      return RouterDecision.new(
-        state["current_lane"],
-        "continue_flow",
-        0.95,
-        remaining_sticky(state),
-        [ "sticky" ]
-      )
-    end
-
-    # 2) Build prompt with user message and state
+    # Build prompt with user message and state
     prompt = "User message: #{turn[:text]}\nState: #{compact_state_summary(state)}"
 
-    # 3) Call LLM with structured schema output
+    # Call LLM with structured schema output
     response = @client.with_instructions(system_prompt).with_schema(Schemas::RouterDecisionSchema).ask(prompt)
 
-    # 4) Parse & clamp (with_schema returns response with .content as hash)
+    # Parse & clamp (with_schema returns response with .content as hash)
     result = response.content
     lane           = result["lane"]
     intent         = (result["intent"] || "general_info").to_s
     confidence     = clamp(result["confidence"].to_f, 0.0, 1.0)
-    sticky_seconds = result["sticky_seconds"].to_i.clamp(0, 600)
     reasons        = Array(result["reasoning"]).map(&:to_s).first(5)
 
-
-    RouterDecision.new(lane, intent, confidence, sticky_seconds, reasons)
+    RouterDecision.new(lane, intent, confidence, reasons)
   rescue StandardError => e
     # Fail-safe: default to info, low confidence
-    RouterDecision.new("info", "general_info", 0.3, 0, [ "router_error: #{e.class}\n #{e.backtrace}" ])
-  end
-
-  # Optionally update stickiness in state from orchestrator after route()
-  def update_sticky!(state:, lane:, seconds:)
-    return if seconds <= 0
-    state["current_lane"] = lane
-    state["sticky_until"] = (@now.call + seconds).iso8601
+    RouterDecision.new("info", "general_info", 0.3, [ "router_error: #{e.class}\n #{e.backtrace}" ])
   end
 
   private
-
-  def sticky_lane?(state)
-    until_ts = state["sticky_until"]
-    lane     = state["current_lane"]
-    until_ts && lane && Time.parse(until_ts) > @now.call
-  rescue ArgumentError
-    false
-  end
-
-  def remaining_sticky(state)
-    until_ts = state["sticky_until"]
-    return 0 unless until_ts
-    [ Time.parse(until_ts) - @now.call, 0 ].max.to_i
-  rescue ArgumentError
-    0
-  end
 
   def clamp(v, lo, hi) = [ [ v, lo ].max, hi ].min
 
@@ -85,7 +49,6 @@ class IntentRouter
       tenant_id: state["tenant_id"],
       locale: state["locale"],
       current_lane: state["current_lane"],
-      sticky_until: state["sticky_until"],
       location_id: state["location_id"],
       fulfillment: state["fulfillment"],
       address_present: !state["address"].nil?,
@@ -109,8 +72,6 @@ class IntentRouter
     - intent: A compact intent label meaningful to the chosen lane (e.g., business_hours, start_order, refund_request)
 
     - confidence: Your confidence in this routing decision (0.0 to 1.0)
-
-    - sticky_seconds: How long to keep the user in this lane to avoid ping-pong (0-600 seconds, 0 if not needed)
 
     - reasoning: 1-3 short reasons for your decision (for observability)
 

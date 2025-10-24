@@ -11,7 +11,7 @@ The IntentRouter now uses RubyLLM with structured output to provide intelligent,
 1. **RouterDecisionSchema** (`app/services/schemas/router_decision_schema.rb`)
    - RubyLLM::Schema definition for structured output
    - Guarantees exact schema matching from LLM responses
-   - Fields: lane, intent, confidence, sticky_seconds, reasoning
+   - Fields: lane, intent, confidence, reasoning
 
 2. **LLMClient** (`app/services/intent_router.rb`)
    - RubyLLM-backed client with multi-provider support
@@ -20,7 +20,7 @@ The IntentRouter now uses RubyLLM with structured output to provide intelligent,
 
 3. **IntentRouter** (`app/services/intent_router.rb`)
    - Uses LLMClient for routing decisions
-   - Maintains sticky session logic
+   - Evaluates intent on every turn for responsive routing
    - Fallback to rule-based routing on errors
 
 ## Configuration
@@ -95,7 +95,6 @@ decision = router.route(turn: turn_data, state: session_state)
 # decision.lane => "commerce"
 # decision.intent => "start_order"
 # decision.confidence => 0.85
-# decision.sticky_seconds => 120
 # decision.reasons => ["User mentioned ordering", "Commerce keywords detected"]
 ```
 
@@ -113,7 +112,6 @@ result = client.call(
 #     "lane" => "commerce",
 #     "intent" => "start_order",
 #     "confidence" => 0.85,
-#     "sticky_seconds" => 120,
 #     "reasoning" => ["User wants to order", "Commerce keywords"]
 #   }
 # }
@@ -223,7 +221,6 @@ Rails.logger.info({
   "lane" => "info",
   "intent" => "general_info",
   "confidence" => 0.5,
-  "sticky_seconds" => 60,
   "reasoning" => ["LLM routing disabled or failed, using fallback"]
 }
 ```

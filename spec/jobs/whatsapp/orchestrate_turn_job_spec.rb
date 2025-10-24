@@ -29,9 +29,8 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
     allow(RubyLLM).to receive(:chat).and_return(mock_llm_client)
     allow(IntentRouter).to receive(:new).and_return(mock_router)
     allow(mock_router).to receive(:route).and_return(
-      RouterDecision.new("info", "general_info", 0.9, 0, [ "default routing" ])
+      RouterDecision.new("info", "general_info", 0.9, [ "default routing" ])
     )
-    allow(mock_router).to receive(:update_sticky!)
   end
 
   after do

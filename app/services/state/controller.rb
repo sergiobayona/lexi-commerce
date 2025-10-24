@@ -56,12 +56,8 @@ module State
         route_decision = @router.route(turn: turn, state: state)
         log_routing(turn, route_decision)
 
-        # 7. Update sticky lane metadata
-        @router.update_sticky!(
-          state: state,
-          lane: route_decision.lane,
-          seconds: route_decision.sticky_seconds
-        )
+        # 7. Update current lane
+        state["current_lane"] = route_decision.lane
 
         # 8. Get agent for the lane
         agent = @registry.for_lane(route_decision.lane)
@@ -203,8 +199,7 @@ module State
       complete_patch = {
         "turns" => state["turns"],
         "last_user_msg_id" => state["last_user_msg_id"],
-        "current_lane" => state["current_lane"],
-        "sticky_until" => state["sticky_until"]
+        "current_lane" => state["current_lane"]
       }
 
       # Simple merge agent's flat patch
@@ -228,7 +223,6 @@ module State
       return unless AgentConfig.valid_lane?(target_lane)
 
       state["current_lane"] = target_lane
-      state["sticky_until"] = nil # Clear stickiness on handoff
 
       # Optionally carry over specific state
       if handoff[:carry_state]
@@ -285,7 +279,6 @@ module State
         lane: decision.lane,
         intent: decision.intent,
         confidence: decision.confidence,
-        sticky_seconds: decision.sticky_seconds,
         reasons: decision.reasons
       }.to_json)
     end

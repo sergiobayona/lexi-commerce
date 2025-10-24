@@ -46,7 +46,7 @@
 **Business Benefits**:
 - ✅ Contextual understanding of customer needs
 - ✅ Reduced response time with direct routing to correct agent
-- ✅ Conversation continuity with "sticky sessions"
+- ✅ Fresh intent evaluation on every turn for responsive routing
 - ✅ Confidence scoring for quality assurance
 
 **Routing Lanes**:
@@ -189,8 +189,7 @@ Agent: Uses GeneralFaq search → "Yes! We offer gluten-free pizza crusts in 10-
     tenant_id: "business_123",      # Multi-tenant support
     wa_id: "16505551234",           # Customer identifier
     locale: "en_US",                # Language preference
-    current_lane: "commerce",       # Active agent
-    sticky_until: "2025-01-15T..."  # Routing lock
+    current_lane: "commerce"        # Active agent
   },
 
   dialogue: {

@@ -49,7 +49,7 @@ RSpec.describe State::Controller do
   describe "#handle_turn" do
     context "with first message (new session)" do
       let(:route_decision) do
-        RouterDecision.new("info", "general_info", 0.9, 120, ["new_user"])
+        RouterDecision.new("info", "general_info", 0.9, ["new_user"])
       end
 
       let(:agent_response) do
@@ -62,7 +62,6 @@ RSpec.describe State::Controller do
 
       before do
         allow(router).to receive(:route).and_return(route_decision)
-        allow(router).to receive(:update_sticky!)
         allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
         allow(info_agent).to receive(:handle).and_return(agent_response)
       end
@@ -131,16 +130,6 @@ RSpec.describe State::Controller do
         expect(router).to have_received(:route) do |args|
           expect(args[:turn]).to be_a(Hash)
           expect(args[:state]).to be_a(Hash)
-        end
-      end
-
-      it "updates sticky lane metadata" do
-        controller.handle_turn(base_turn)
-
-        expect(router).to have_received(:update_sticky!) do |args|
-          expect(args[:state]).to be_a(Hash)
-          expect(args[:lane]).to eq("info")
-          expect(args[:seconds]).to eq(120)
         end
       end
 
@@ -223,7 +212,7 @@ RSpec.describe State::Controller do
       end
 
       let(:route_decision) do
-        RouterDecision.new("commerce", "view_cart", 0.85, 60, ["commerce_intent"])
+        RouterDecision.new("commerce", "view_cart", 0.85, ["commerce_intent"])
       end
 
       let(:agent_response) do
@@ -240,7 +229,6 @@ RSpec.describe State::Controller do
         redis.set(session_key, existing_state.to_json)
 
         allow(router).to receive(:route).and_return(route_decision)
-        allow(router).to receive(:update_sticky!)
         allow(registry).to receive(:for_lane).with("commerce").and_return(commerce_agent)
         allow(commerce_agent).to receive(:handle).and_return(agent_response)
       end
@@ -274,7 +262,7 @@ RSpec.describe State::Controller do
 
     context "with lane handoff" do
       let(:route_decision) do
-        RouterDecision.new("info", "start_shopping", 0.9, 0, ["wants_to_shop"])
+        RouterDecision.new("info", "start_shopping", 0.9, ["wants_to_shop"])
       end
 
       let(:agent_response) do
@@ -292,7 +280,6 @@ RSpec.describe State::Controller do
 
       before do
         allow(router).to receive(:route).and_return(route_decision)
-        allow(router).to receive(:update_sticky!)
         allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
         allow(info_agent).to receive(:handle).and_return(agent_response)
       end
@@ -304,15 +291,6 @@ RSpec.describe State::Controller do
         state = JSON.parse(redis.get(session_key))
 
         expect(state["current_lane"]).to eq("commerce")
-      end
-
-      it "clears sticky_until on handoff" do
-        controller.handle_turn(base_turn)
-
-        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
-        state = JSON.parse(redis.get(session_key))
-
-        expect(state["sticky_until"]).to be_nil
       end
 
       it "carries over specified state" do
@@ -363,12 +341,11 @@ RSpec.describe State::Controller do
 
     context "with agent error" do
       let(:route_decision) do
-        RouterDecision.new("info", "general_info", 0.9, 0, [])
+        RouterDecision.new("info", "general_info", 0.9, [])
       end
 
       before do
         allow(router).to receive(:route).and_return(route_decision)
-        allow(router).to receive(:update_sticky!)
         allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
         allow(info_agent).to receive(:handle).and_raise(StandardError, "Agent crashed")
       end
@@ -393,7 +370,7 @@ RSpec.describe State::Controller do
 
     context "logging" do
       let(:route_decision) do
-        RouterDecision.new("commerce", "add_to_cart", 0.92, 120, ["user_intent", "high_confidence"])
+        RouterDecision.new("commerce", "add_to_cart", 0.92, ["user_intent", "high_confidence"])
       end
 
       let(:agent_response) do
@@ -406,7 +383,6 @@ RSpec.describe State::Controller do
 
       before do
         allow(router).to receive(:route).and_return(route_decision)
-        allow(router).to receive(:update_sticky!)
         allow(registry).to receive(:for_lane).with("commerce").and_return(commerce_agent)
         allow(commerce_agent).to receive(:handle).and_return(agent_response)
       end
@@ -455,7 +431,7 @@ RSpec.describe State::Controller do
         }
       end
 
-      route_decision = RouterDecision.new("info", "general_info", 0.9, 0, [])
+      route_decision = RouterDecision.new("info", "general_info", 0.9, [])
       agent_response = Agents::BaseAgent::AgentResponse.new(
         messages: [{ type: "text", text: { body: "Hi" } }],
         state_patch: {},
@@ -463,7 +439,6 @@ RSpec.describe State::Controller do
       )
 
       allow(router).to receive(:route).and_return(route_decision)
-      allow(router).to receive(:update_sticky!)
       allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
       allow(info_agent).to receive(:handle).and_return(agent_response)
 

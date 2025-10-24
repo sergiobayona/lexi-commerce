@@ -29,7 +29,6 @@ RSpec.describe State::Builder do
 
       it "includes default routing fields" do
         expect(session["current_lane"]).to eq("info")
-        expect(session["sticky_until"]).to be_nil
       end
 
       it "includes default customer flags" do
