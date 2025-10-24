@@ -15,7 +15,7 @@ RSpec.describe AgentConfig do
 
   describe ".lanes" do
     it "returns all configured lanes sorted alphabetically" do
-      expect(described_class.lanes).to eq(%w[commerce info product support])
+      expect(described_class.lanes).to eq(%w[commerce info order product support])
     end
 
     it "returns an array" do
@@ -53,6 +53,10 @@ RSpec.describe AgentConfig do
       expect(described_class.agent_class_for("product")).to eq(Agents::ProductAgent)
     end
 
+    it "returns correct agent class for order lane" do
+      expect(described_class.agent_class_for("order")).to eq(Agents::OrderStatusAgent)
+    end
+
     it "returns nil for unknown lane" do
       expect(described_class.agent_class_for("unknown")).to be_nil
     end
@@ -84,6 +88,11 @@ RSpec.describe AgentConfig do
       expect(description).to include("Product-specific questions")
     end
 
+    it "returns description for order lane" do
+      description = described_class.description_for("order")
+      expect(description).to include("Order tracking")
+    end
+
     it "returns nil for unknown lane" do
       expect(described_class.description_for("unknown")).to be_nil
     end
@@ -93,7 +102,7 @@ RSpec.describe AgentConfig do
     it "returns hash of all lane descriptions" do
       descriptions = described_class.lane_descriptions
       expect(descriptions).to be_a(Hash)
-      expect(descriptions.keys).to match_array(%w[info product commerce support])
+      expect(descriptions.keys).to match_array(%w[info product commerce order support])
     end
 
     it "includes all required descriptions" do
@@ -101,6 +110,7 @@ RSpec.describe AgentConfig do
       expect(descriptions["info"]).to be_present
       expect(descriptions["product"]).to be_present
       expect(descriptions["commerce"]).to be_present
+      expect(descriptions["order"]).to be_present
       expect(descriptions["support"]).to be_present
     end
 
@@ -116,6 +126,7 @@ RSpec.describe AgentConfig do
       expect(described_class.valid_lane?("info")).to be true
       expect(described_class.valid_lane?("product")).to be true
       expect(described_class.valid_lane?("commerce")).to be true
+      expect(described_class.valid_lane?("order")).to be true
       expect(described_class.valid_lane?("support")).to be true
     end
 
