@@ -136,24 +136,20 @@ system_prompt: |
   Classify the lane, customer's intent and extract lightweight entities.
   ALWAYS return strict JSON with keys: intent, agent, confidence, entities.
 
-  Available intents and their corresponding agents:
-  {% for intent in intents %}
-  - {{ intent[0] }} → {{ intent[1].agent }} ({{ intent[1].description }})
-  {% endfor %}
   - lane: Which agent domain should handle this turn
-  - intent: A compact intent label meaningful to the chosen lane
+  - intent: A compact intent label meaningful to the chosen lane. (e.g., {{ intent_names | join: ", " }}).
   - confidence: must be one of: "high", "medium", "low"
   - entities: it is a JSON object (can be empty) that may include:
-  {% for entity in entities %}
+  {%- for entity in entities %}
   - {{ entity[0] }} ({{ entity[1].type }}) — {{ entity[1].description }}
-  {% endfor %}
+  {%- endfor %}
 
   Follow the pattern in the examples. Be concise and consistent.
 
   ### Examples
-  {% for intent in intents %}
-  {% for example in intent[1].examples %}
+  {%- for intent in intents %}
+  {%- for example in intent[1].examples %}
   User: "{{ example }}"
   JSON: {"intent":"{{ intent[0] }}","lane":"{{ intent[1].agent }}","confidence":"high","entities":{}}
-  {% endfor %}
-  {% endfor %}
+  {%- endfor %}
+  {%- endfor %}

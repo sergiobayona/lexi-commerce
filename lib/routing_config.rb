@@ -36,7 +36,9 @@ class RoutingConfig
       template = Liquid::Template.parse(raw_prompt)
       template.render(
         "intents" => intents,
-        "entities" => entities
+        "entities" => entities,
+        "intent_names" => intents.keys,
+        "entity_names" => entities.keys
       )
     end
 
