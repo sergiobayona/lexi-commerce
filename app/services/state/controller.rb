@@ -40,8 +40,7 @@ module State
 
       begin
         # 3. Load or create session
-        state = load_or_create_session(turn)
-        is_new_session = @redis.get(session_key).nil?
+        state, is_new_session = load_or_create_session(turn)
 
         # 3a. For new sessions, persist initial state before any modifications
         if is_new_session
@@ -155,15 +154,17 @@ module State
 
       if json_str
         # Hydrate existing session (auto-upcasts if needed)
-        @builder.from_json(json_str)
+        state = @builder.from_json(json_str)
+        [ state, false ]  # existing session
       else
         # Create new session
-        @builder.new_session(
+        state = @builder.new_session(
           tenant_id: turn[:tenant_id],
           wa_id: turn[:wa_id],
           locale: turn[:locale] || "es-CO",
           timezone: turn[:timezone] || "America/Bogota"
         )
+        [ state, true ]  # new session
       end
     end
 

@@ -471,5 +471,55 @@ RSpec.describe State::Controller do
       expect(results.all?(&:success)).to be true
       expect(results.size).to eq(5)
     end
+
+    it "handles concurrent requests for same session without race condition" do
+      # Bug #1 Fix: Verifies that concurrent requests for the same session
+      # don't cause the race condition where is_new_session check happens
+      # after load_or_create_session, potentially causing session loss
+
+      shared_turn = {
+        tenant_id: "tenant_123",
+        wa_id: "16505551234",
+        message_id: nil,  # will be set per thread
+        text: "Concurrent message",
+        payload: nil,
+        timestamp: Time.now.utc.iso8601
+      }
+
+      route_decision = RouterDecision.new("info", "general_info", 0.9, [])
+      agent_response = Agents::BaseAgent::AgentResponse.new(
+        messages: [{ type: "text", text: { body: "Response" } }],
+        state_patch: { "message_count" => 1 },
+        baton: nil
+      )
+
+      allow(router).to receive(:route).and_return(route_decision)
+      allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+      allow(info_agent).to receive(:handle).and_return(agent_response)
+
+      # Create 3 concurrent requests for the same session
+      threads = 3.times.map do |i|
+        Thread.new do
+          turn = shared_turn.merge(message_id: "msg_concurrent_#{i}")
+          controller.handle_turn(turn)
+        end
+      end
+
+      results = threads.map(&:value)
+
+      # All requests should succeed
+      expect(results.all?(&:success)).to be true
+
+      # Session should exist in Redis
+      session_key = "session:#{shared_turn[:tenant_id]}:#{shared_turn[:wa_id]}"
+      session_json = redis.get(session_key)
+      expect(session_json).to be_present
+
+      # Session should have all dialogue turns
+      state = JSON.parse(session_json)
+      expect(state["turns"].size).to eq(3)
+      expect(state["tenant_id"]).to eq("tenant_123")
+      expect(state["wa_id"]).to eq("16505551234")
+    end
   end
 end
