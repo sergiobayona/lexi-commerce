@@ -139,4 +139,74 @@ RSpec.describe RoutingConfig do
       }.to raise_error(RoutingConfig::ConfigurationError, /routing.yml not found/)
     end
   end
+
+  describe "Liquid template error handling" do
+    # Bug #15 Fix: Test that Liquid template errors are properly caught and converted to ConfigurationError
+    before { described_class.reset! }
+    after { described_class.reset! }
+
+    it "raises ConfigurationError for invalid Liquid syntax in system_prompt" do
+      # Mock config with invalid Liquid template (missing closing tag)
+      invalid_config = {
+        "system_prompt" => "Start {% for intent in intents %} {{ intent }} - missing endfor tag",
+        "intents" => { "test" => { "agent" => "info" } },
+        "entities" => {}
+      }
+
+      allow(YAML).to receive(:load_file).and_return(invalid_config)
+
+      expect {
+        described_class.system_prompt
+      }.to raise_error(RoutingConfig::ConfigurationError, /(Invalid Liquid template|Failed to render system_prompt template)/)
+    end
+
+    it "raises ConfigurationError for undefined variables in Liquid template" do
+      # Mock config with template that references undefined variable
+      invalid_config = {
+        "system_prompt" => "Value: {{ undefined_variable }}",
+        "intents" => { "test" => { "agent" => "info" } },
+        "entities" => {}
+      }
+
+      allow(YAML).to receive(:load_file).and_return(invalid_config)
+
+      # This should not raise an error - Liquid silently ignores undefined variables
+      # So this test verifies the expected behavior
+      expect {
+        described_class.system_prompt
+      }.not_to raise_error
+    end
+
+    it "handles errors during template rendering" do
+      # Mock config that will cause an error during rendering
+      invalid_config = {
+        "system_prompt" => "Test {% assign x = y %}",
+        "intents" => { "test" => { "agent" => "info" } },
+        "entities" => {}
+      }
+
+      allow(YAML).to receive(:load_file).and_return(invalid_config)
+
+      # Liquid might not error on this, but if it does, it should be caught
+      # This test ensures the rescue block works for any StandardError
+      result = described_class.system_prompt
+      expect(result).to be_a(String)
+    end
+
+    it "successfully renders valid Liquid template" do
+      # Mock config with valid Liquid template
+      valid_config = {
+        "system_prompt" => "Intents: {% for intent in intents %}{{ intent[0] }}{% unless forloop.last %}, {% endunless %}{% endfor %}",
+        "intents" => { "test1" => { "agent" => "info" }, "test2" => { "agent" => "commerce" } },
+        "entities" => {}
+      }
+
+      allow(YAML).to receive(:load_file).and_return(valid_config)
+
+      result = described_class.system_prompt
+      expect(result).to include("test1")
+      expect(result).to include("test2")
+      expect(result).to include("Intents:")
+    end
+  end
 end

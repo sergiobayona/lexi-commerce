@@ -18,8 +18,16 @@ class IntentRouter
     # Build prompt with user message and state
     prompt = "User message: #{turn[:text]}\nState: #{compact_state_summary(state)}"
 
+    # Bug #15 Fix: Handle configuration errors from system_prompt
+    begin
+      instructions = system_prompt
+    rescue RoutingConfig::ConfigurationError => e
+      Rails.logger.error("Routing configuration error: #{e.message}")
+      return RouterDecision.new("info", "general_info", 0.1, [ "config_error: #{e.message}" ])
+    end
+
     # Call LLM with structured schema output
-    response = @client.with_instructions(system_prompt).with_schema(Schemas::RouterDecisionSchema).ask(prompt)
+    response = @client.with_instructions(instructions).with_schema(Schemas::RouterDecisionSchema).ask(prompt)
 
     # Parse & clamp (with_schema returns response with .content as hash)
     result = response.content
@@ -31,7 +39,8 @@ class IntentRouter
     RouterDecision.new(lane, intent, confidence, reasons)
   rescue StandardError => e
     # Fail-safe: default to info, low confidence
-    RouterDecision.new("info", "general_info", 0.3, [ "router_error: #{e.class}\n #{e.backtrace}" ])
+    Rails.logger.error("Router error: #{e.class} - #{e.message}")
+    RouterDecision.new("info", "general_info", 0.3, [ "router_error: #{e.class}" ])
   end
 
   private
