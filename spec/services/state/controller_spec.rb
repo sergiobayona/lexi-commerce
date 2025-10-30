@@ -566,6 +566,133 @@ RSpec.describe State::Controller do
           log["current_lane"] == "info"
         end
       end
+
+      it "does not merge baton payload when same-lane handoff is rejected" do
+        # Bug #11 Fix: Invalid baton payloads should not pollute state
+        route_decision = RouterDecision.new("info", "general_info", 0.9, [])
+
+        # Agent returns same-lane baton with payload
+        info_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Response" } }],
+          state_patch: { "valid_field" => "should_be_applied" },
+          baton: Agents::BaseAgent::Baton.new("info", {
+            carry_state: {
+              "invalid_baton_data" => "should_NOT_be_applied"
+            }
+          })
+        )
+
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(info_agent).to receive(:handle).and_return(info_response)
+
+        result = controller.handle_turn(base_turn)
+
+        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
+        state = JSON.parse(redis.get(session_key))
+
+        # Agent's state patch should be applied (agent did valid work)
+        expect(state["valid_field"]).to eq("should_be_applied")
+
+        # Bug #11 Fix: Invalid baton payload should NOT be applied
+        expect(state["invalid_baton_data"]).to be_nil
+      end
+
+      it "does not merge baton payload when invalid lane is rejected" do
+        # Bug #11 Fix: Test with invalid lane name
+        route_decision = RouterDecision.new("info", "general_info", 0.9, [])
+
+        # Agent returns baton to non-existent lane
+        info_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Response" } }],
+          state_patch: { "agent_work" => "completed" },
+          baton: Agents::BaseAgent::Baton.new("nonexistent_lane", {
+            carry_state: {
+              "bad_payload" => "should_not_apply"
+            }
+          })
+        )
+
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(info_agent).to receive(:handle).and_return(info_response)
+
+        result = controller.handle_turn(base_turn)
+
+        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
+        state = JSON.parse(redis.get(session_key))
+
+        # Agent's state patch applied
+        expect(state["agent_work"]).to eq("completed")
+
+        # Bug #11 Fix: Invalid baton payload not applied
+        expect(state["bad_payload"]).to be_nil
+
+        # Baton should be rejected
+        expect(logger).to have_received(:warn) do |log_json|
+          log = JSON.parse(log_json)
+          log["event"] == "baton_stop" && log["reason"] == "invalid_lane"
+        end
+      end
+
+      it "does not merge baton payload when hop limit is reached" do
+        # Bug #11 Fix: Test with MAX_BATON_HOPS exceeded
+        route_decision = RouterDecision.new("info", "complex_task", 0.9, [])
+
+        # Setup chain that exceeds hop limit
+        support_agent = instance_double(Agents::BaseAgent)
+        fulfillment_agent = instance_double(Agents::BaseAgent)
+
+        # Hop 0: info -> commerce
+        info_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Step 1" } }],
+          state_patch: { "hop_0" => "done" },
+          baton: Agents::BaseAgent::Baton.new("commerce", { carry_state: { "hop_0_data" => "ok" } })
+        )
+
+        # Hop 1: commerce -> support
+        commerce_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Step 2" } }],
+          state_patch: { "hop_1" => "done" },
+          baton: Agents::BaseAgent::Baton.new("support", { carry_state: { "hop_1_data" => "ok" } })
+        )
+
+        # Hop 2: support -> fulfillment (should be REJECTED - exceeds MAX_BATON_HOPS=2)
+        support_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Step 3" } }],
+          state_patch: { "hop_2" => "done" },
+          baton: Agents::BaseAgent::Baton.new("fulfillment", {
+            carry_state: {
+              "hop_2_data" => "should_NOT_apply"  # This baton exceeds hop limit
+            }
+          })
+        )
+
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(registry).to receive(:for_lane).with("commerce").and_return(commerce_agent)
+        allow(registry).to receive(:for_lane).with("support").and_return(support_agent)
+        allow(info_agent).to receive(:handle).and_return(info_response)
+        allow(commerce_agent).to receive(:handle).and_return(commerce_response)
+        allow(support_agent).to receive(:handle).and_return(support_response)
+
+        result = controller.handle_turn(base_turn)
+
+        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
+        state = JSON.parse(redis.get(session_key))
+
+        # All agent state patches applied (valid work)
+        expect(state["hop_0"]).to eq("done")
+        expect(state["hop_1"]).to eq("done")
+        expect(state["hop_2"]).to eq("done")
+
+        # Valid baton payloads applied
+        expect(state["hop_0_data"]).to eq("ok")
+        expect(state["hop_1_data"]).to eq("ok")
+
+        # Bug #11 Fix: Invalid baton payload (hop limit exceeded) NOT applied
+        expect(state["hop_2_data"]).to be_nil
+      end
     end
 
     context "dialogue history tracking" do

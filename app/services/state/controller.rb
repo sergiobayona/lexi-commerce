@@ -91,15 +91,23 @@ module State
           # Bug #10 Fix: Append agent response to dialogue history
           append_agent_response_to_dialogue(state, agent_response, route_decision.lane)
 
+          # Always apply agent's state patch (agent did valid work)
           complete_patch = build_complete_patch(state: state, agent_response: agent_response)
           apply_complete_patch!(state, complete_patch)
 
           baton = agent_response.baton
-          merge_baton_payload!(state, baton) if baton
+
+          # Bug #11 Fix: Validate baton BEFORE merging its payload
+          # This prevents invalid baton payloads from polluting state
+          should_continue = continue_baton?(baton, hop, state["current_lane"])
+
+          # Only merge baton payload if baton is valid
+          merge_baton_payload!(state, baton) if baton && should_continue
 
           save_state!(session_key, state)
 
-          break unless continue_baton?(baton, hop, state["current_lane"])
+          # Break if baton validation failed
+          break unless should_continue
 
           hop += 1
         end

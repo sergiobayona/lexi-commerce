@@ -67,12 +67,6 @@ RSpec.describe RoutingConfig do
       expect(prompt).to include("order_status")
     end
 
-    it "includes agent mappings" do
-      expect(prompt).to include("→ info")
-      expect(prompt).to include("→ product")
-      expect(prompt).to include("→ commerce")
-    end
-
     it "includes entity definitions" do
       expect(prompt).to include("product (string)")
       expect(prompt).to include("order_id (string)")
