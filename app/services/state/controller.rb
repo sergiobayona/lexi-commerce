@@ -110,10 +110,12 @@ module State
       rescue State::Validator::Invalid => e
         log_validation_error(turn, e)
         reset_corrupted_session(session_key, turn)
+        mark_processed(turn[:message_id])
         error_result("Session validation failed: #{e.message}")
 
       rescue StandardError => e
         log_error(turn, e)
+        mark_processed(turn[:message_id])
         error_result("Turn processing failed: #{e.message}")
       end
     end

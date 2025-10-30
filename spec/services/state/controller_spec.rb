@@ -198,6 +198,87 @@ RSpec.describe State::Controller do
       end
     end
 
+    context "webhook retry scenarios" do
+      it "handles retry after successful processing" do
+        # Bug #3 Fix: Webhook retries after success should return duplicate_turn
+        route_decision = RouterDecision.new("info", "general_info", 0.9, [])
+        agent_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Success" } }],
+          state_patch: {},
+          baton: nil
+        )
+
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(info_agent).to receive(:handle).and_return(agent_response)
+
+        # First attempt succeeds
+        first_result = controller.handle_turn(base_turn)
+        expect(first_result.success).to be true
+        expect(first_result.messages).not_to be_empty
+
+        # Webhook retry delivers same message again
+        retry_result = controller.handle_turn(base_turn)
+
+        expect(retry_result.success).to be true
+        expect(retry_result.error).to eq("duplicate_turn")
+        expect(retry_result.messages).to be_empty
+
+        # Agent should only be called once (not on retry)
+        expect(info_agent).to have_received(:handle).once
+      end
+
+      it "handles retry after validation error" do
+        # Bug #3 Fix: Webhook retries after validation error should not reset session again
+        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
+        corrupted_state = { "tenant_id" => nil }
+        redis.set(session_key, corrupted_state.to_json)
+
+        # First attempt fails validation
+        first_result = controller.handle_turn(base_turn)
+        expect(first_result.success).to be false
+        expect(first_result.error).to match(/validation failed/)
+
+        # Session should be reset to fresh state
+        state = JSON.parse(redis.get(session_key))
+        expect(state["tenant_id"]).to eq("tenant_123")
+        first_updated_at = state["updated_at"]
+
+        # Webhook retry delivers same message again
+        retry_result = controller.handle_turn(base_turn)
+
+        expect(retry_result.success).to be true
+        expect(retry_result.error).to eq("duplicate_turn")
+
+        # Session should NOT be reset again
+        state = JSON.parse(redis.get(session_key))
+        expect(state["updated_at"]).to eq(first_updated_at)
+      end
+
+      it "handles retry after agent error" do
+        # Bug #3 Fix: Webhook retries after agent error should not retry the failing agent
+        route_decision = RouterDecision.new("info", "general_info", 0.9, [])
+
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(info_agent).to receive(:handle).and_raise(StandardError, "Agent crashed")
+
+        # First attempt fails
+        first_result = controller.handle_turn(base_turn)
+        expect(first_result.success).to be false
+        expect(first_result.error).to match(/Turn processing failed/)
+
+        # Webhook retry delivers same message again
+        retry_result = controller.handle_turn(base_turn)
+
+        expect(retry_result.success).to be true
+        expect(retry_result.error).to eq("duplicate_turn")
+
+        # Agent should only be called once (not on retry)
+        expect(info_agent).to have_received(:handle).once
+      end
+    end
+
     context "with existing session" do
       let(:existing_state) do
         State::Builder.new.new_session(
@@ -357,6 +438,27 @@ RSpec.describe State::Controller do
           expect(parsed["event"]).to eq("validation_error")
         end
       end
+
+      it "marks message as processed to prevent retry storms" do
+        # Bug #3 Fix: Validation errors should mark message as processed
+        # to prevent webhook retries from repeatedly resetting the session
+        controller.handle_turn(base_turn)
+
+        idempotency_key = "turn:processed:#{base_turn[:message_id]}"
+        expect(redis.exists?(idempotency_key)).to be true
+      end
+
+      it "prevents retry after validation error" do
+        # Bug #3 Fix: Second attempt should return duplicate_turn result
+        controller.handle_turn(base_turn)
+
+        # Retry the same message
+        result = controller.handle_turn(base_turn)
+
+        expect(result.success).to be true
+        expect(result.error).to eq("duplicate_turn")
+        expect(result.messages).to be_empty
+      end
     end
 
     context "with agent error" do
@@ -385,6 +487,27 @@ RSpec.describe State::Controller do
           expect(parsed["event"]).to eq("turn_error")
           expect(parsed["error"]).to match(/Agent crashed/)
         end
+      end
+
+      it "marks message as processed to prevent retry storms" do
+        # Bug #3 Fix: Agent errors should mark message as processed
+        # to prevent webhook retries from repeatedly failing with the same error
+        controller.handle_turn(base_turn)
+
+        idempotency_key = "turn:processed:#{base_turn[:message_id]}"
+        expect(redis.exists?(idempotency_key)).to be true
+      end
+
+      it "prevents retry after agent error" do
+        # Bug #3 Fix: Second attempt should return duplicate_turn result
+        controller.handle_turn(base_turn)
+
+        # Retry the same message
+        result = controller.handle_turn(base_turn)
+
+        expect(result.success).to be true
+        expect(result.error).to eq("duplicate_turn")
+        expect(result.messages).to be_empty
       end
     end
 
