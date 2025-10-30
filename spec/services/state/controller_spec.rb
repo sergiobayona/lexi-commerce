@@ -111,12 +111,19 @@ RSpec.describe State::Controller do
 
         turns = state["turns"]
         expect(turns).to be_an(Array)
-        expect(turns.size).to be >= 1
+        # Bug #10 Fix: Now has 2 turns (user + agent response)
+        expect(turns.size).to eq(2)
 
-        last_turn = turns.last
-        expect(last_turn["role"]).to eq("user")
-        expect(last_turn["text"]).to eq("Hello")
-        expect(last_turn["message_id"]).to eq(base_turn[:message_id])
+        # Check user turn
+        user_turn = turns[0]
+        expect(user_turn["role"]).to eq("user")
+        expect(user_turn["text"]).to eq("Hello")
+        expect(user_turn["message_id"]).to eq(base_turn[:message_id])
+
+        # Check agent turn (Bug #10 Fix)
+        agent_turn = turns[1]
+        expect(agent_turn["role"]).to eq("assistant")
+        expect(agent_turn["lane"]).to eq("info")
       end
 
       it "calls router with turn and state" do
@@ -396,11 +403,69 @@ RSpec.describe State::Controller do
         expect(state["handled_by"]).to eq("commerce")
       end
 
-      it "returns the baton agent response messages" do
+      it "returns accumulated messages from all agents in baton chain" do
+        # Bug #8 Fix: Should return messages from BOTH info and commerce agents
         result = controller.handle_turn(base_turn)
 
-        expect(result.messages).to eq(commerce_response.messages)
+        # Should include messages from BOTH agents
+        expect(result.messages).to eq(
+          info_response.messages + commerce_response.messages
+        )
+        expect(result.messages.size).to eq(2)
+        expect(result.messages[0][:text][:body]).to eq("Switching to commerce...")
+        expect(result.messages[1][:text][:body]).to eq("Your cart is empty")
         expect(result.lane).to eq("commerce")
+      end
+
+      it "accumulates messages from all agents in multi-hop baton chain" do
+        # Bug #8 Fix: Test with MAX_BATON_HOPS (3 total agents)
+        # Setup: router -> info -> commerce -> support (2 hops)
+        support_agent = instance_double(Agents::BaseAgent)
+
+        # Info agent hands off to commerce
+        multi_info_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Checking your order..." } }],
+          state_patch: {},
+          baton: Agents::BaseAgent::Baton.new("commerce", { context: "order" })
+        )
+
+        # Commerce agent hands off to support
+        multi_commerce_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Found an issue..." } }],
+          state_patch: {},
+          baton: Agents::BaseAgent::Baton.new("support", { issue: "refund" })
+        )
+
+        # Support agent completes (no baton)
+        support_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "I'll process your refund" } }],
+          state_patch: {},
+          baton: nil
+        )
+
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(registry).to receive(:for_lane).with("commerce").and_return(commerce_agent)
+        allow(registry).to receive(:for_lane).with("support").and_return(support_agent)
+        allow(info_agent).to receive(:handle).and_return(multi_info_response)
+        allow(commerce_agent).to receive(:handle).and_return(multi_commerce_response)
+        allow(support_agent).to receive(:handle).and_return(support_response)
+
+        result = controller.handle_turn(base_turn)
+
+        # Should accumulate ALL three agent messages
+        expect(result.messages.size).to eq(3)
+        expect(result.messages[0][:text][:body]).to eq("Checking your order...")
+        expect(result.messages[1][:text][:body]).to eq("Found an issue...")
+        expect(result.messages[2][:text][:body]).to eq("I'll process your refund")
+
+        # Final lane should be support
+        expect(result.lane).to eq("support")
+
+        # All three agents should have been called
+        expect(info_agent).to have_received(:handle).once
+        expect(commerce_agent).to have_received(:handle).once
+        expect(support_agent).to have_received(:handle).once
       end
     end
 
@@ -500,6 +565,146 @@ RSpec.describe State::Controller do
           log["target"] == "info" &&
           log["current_lane"] == "info"
         end
+      end
+    end
+
+    context "dialogue history tracking" do
+      # Bug #10 Fix: Agent responses should be saved to dialogue history
+
+      it "saves agent response to dialogue history" do
+        route_decision = RouterDecision.new("info", "business_hours", 0.95, [])
+        agent_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "We're open 9am-5pm" } }],
+          state_patch: {},
+          baton: nil
+        )
+
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(info_agent).to receive(:handle).and_return(agent_response)
+
+        controller.handle_turn(base_turn)
+
+        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
+        state = JSON.parse(redis.get(session_key))
+
+        # Dialogue should have 2 turns: user message + agent response
+        expect(state["turns"].size).to eq(2)
+
+        # User turn
+        expect(state["turns"][0]["role"]).to eq("user")
+        expect(state["turns"][0]["text"]).to eq(base_turn[:text])
+
+        # Agent turn (Bug #10 Fix)
+        expect(state["turns"][1]["role"]).to eq("assistant")
+        expect(state["turns"][1]["lane"]).to eq("info")
+        # Messages are stringified after JSON round-trip
+        expect(state["turns"][1]["messages"][0]["type"]).to eq("text")
+        expect(state["turns"][1]["messages"][0]["text"]["body"]).to eq("We're open 9am-5pm")
+        expect(state["turns"][1]["timestamp"]).to be_present
+      end
+
+      it "saves all agent responses in baton chain to dialogue" do
+        # Setup baton handoff: info -> commerce
+        route_decision = RouterDecision.new("info", "view_cart", 0.9, [])
+
+        info_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Let me check..." } }],
+          state_patch: {},
+          baton: Agents::BaseAgent::Baton.new("commerce", {})
+        )
+
+        commerce_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Your cart is empty" } }],
+          state_patch: {},
+          baton: nil
+        )
+
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(registry).to receive(:for_lane).with("commerce").and_return(commerce_agent)
+        allow(info_agent).to receive(:handle).and_return(info_response)
+        allow(commerce_agent).to receive(:handle).and_return(commerce_response)
+
+        controller.handle_turn(base_turn)
+
+        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
+        state = JSON.parse(redis.get(session_key))
+
+        # Should have 3 turns: user + info agent + commerce agent
+        expect(state["turns"].size).to eq(3)
+
+        # Turn 0: User
+        expect(state["turns"][0]["role"]).to eq("user")
+
+        # Turn 1: Info agent response
+        expect(state["turns"][1]["role"]).to eq("assistant")
+        expect(state["turns"][1]["lane"]).to eq("info")
+        expect(state["turns"][1]["messages"].size).to eq(1)
+        expect(state["turns"][1]["messages"][0]["text"]["body"]).to eq("Let me check...")
+
+        # Turn 2: Commerce agent response
+        expect(state["turns"][2]["role"]).to eq("assistant")
+        expect(state["turns"][2]["lane"]).to eq("commerce")
+        expect(state["turns"][2]["messages"].size).to eq(1)
+        expect(state["turns"][2]["messages"][0]["text"]["body"]).to eq("Your cart is empty")
+      end
+
+      it "maintains dialogue history across multiple user turns" do
+        # First turn
+        turn1 = base_turn.merge(
+          message_id: "msg_001",
+          text: "What are your business hours?"
+        )
+
+        route_decision1 = RouterDecision.new("info", "business_hours", 0.95, [])
+        agent_response1 = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "We're open 9am-5pm" } }],
+          state_patch: {},
+          baton: nil
+        )
+
+        allow(router).to receive(:route).and_return(route_decision1)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(info_agent).to receive(:handle).and_return(agent_response1)
+
+        controller.handle_turn(turn1)
+
+        # Second turn
+        turn2 = base_turn.merge(
+          message_id: "msg_002",
+          text: "What about weekends?"
+        )
+
+        route_decision2 = RouterDecision.new("info", "business_hours", 0.95, [])
+        agent_response2 = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Closed on weekends" } }],
+          state_patch: {},
+          baton: nil
+        )
+
+        allow(router).to receive(:route).and_return(route_decision2)
+        allow(info_agent).to receive(:handle).and_return(agent_response2)
+
+        controller.handle_turn(turn2)
+
+        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
+        state = JSON.parse(redis.get(session_key))
+
+        # Should have 4 turns total: user1, agent1, user2, agent2
+        expect(state["turns"].size).to eq(4)
+
+        expect(state["turns"][0]["role"]).to eq("user")
+        expect(state["turns"][0]["text"]).to eq("What are your business hours?")
+
+        expect(state["turns"][1]["role"]).to eq("assistant")
+        expect(state["turns"][1]["messages"][0]["text"]["body"]).to eq("We're open 9am-5pm")
+
+        expect(state["turns"][2]["role"]).to eq("user")
+        expect(state["turns"][2]["text"]).to eq("What about weekends?")
+
+        expect(state["turns"][3]["role"]).to eq("assistant")
+        expect(state["turns"][3]["messages"][0]["text"]["body"]).to eq("Closed on weekends")
       end
     end
 
@@ -824,9 +1029,9 @@ RSpec.describe State::Controller do
       session_json = redis.get(session_key)
       expect(session_json).to be_present
 
-      # Session should have all dialogue turns
+      # Session should have all dialogue turns (Bug #10: 3 user + 3 agent = 6 total)
       state = JSON.parse(session_json)
-      expect(state["turns"].size).to eq(3)
+      expect(state["turns"].size).to eq(6)  # 3 user messages + 3 agent responses
       expect(state["tenant_id"]).to eq("tenant_123")
       expect(state["wa_id"]).to eq("16505551234")
     end

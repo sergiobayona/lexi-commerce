@@ -59,6 +59,7 @@ module State
         baton = nil
         route_decision = nil
         agent_response = nil
+        accumulated_messages = []  # Bug #8 Fix: Collect all agent messages
 
         loop do
           previous_lane = route_decision&.lane || state["current_lane"]
@@ -81,6 +82,12 @@ module State
             intent: route_decision.intent
           )
 
+          # Bug #8 Fix: Accumulate messages from each agent in the baton chain
+          accumulated_messages.concat(agent_response.messages || [])
+
+          # Bug #10 Fix: Append agent response to dialogue history
+          append_agent_response_to_dialogue(state, agent_response, route_decision.lane)
+
           complete_patch = build_complete_patch(state: state, agent_response: agent_response)
           apply_complete_patch!(state, complete_patch)
 
@@ -100,10 +107,10 @@ module State
         # 13. Log success
         log_turn_success(turn, route_decision, agent_response, Time.now.utc - start_time)
 
-        # 14. Return result
+        # 14. Return result with all accumulated messages
         TurnResult.new(
           success: true,
-          messages: agent_response.messages,
+          messages: accumulated_messages,  # Bug #8 Fix: Return all messages from baton chain
           state_version: nil, # No longer tracking versions
           lane: route_decision.lane,
           error: nil
@@ -201,6 +208,17 @@ module State
         "timestamp" => turn[:timestamp] || Time.now.utc.iso8601
       }
       state["last_user_msg_id"] = turn[:message_id]
+    end
+
+    # Bug #10 Fix: Append agent response to dialogue history
+    def append_agent_response_to_dialogue(state, agent_response, lane)
+      state["turns"] ||= []
+      state["turns"] << {
+        "role" => "assistant",
+        "lane" => lane,
+        "messages" => agent_response.messages || [],
+        "timestamp" => Time.now.utc.iso8601
+      }
     end
 
     # ============================================
