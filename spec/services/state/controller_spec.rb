@@ -404,6 +404,105 @@ RSpec.describe State::Controller do
       end
     end
 
+    context "baton handoff validation" do
+      it "prevents same-lane handoff (agent handing off to itself)" do
+        # Bug #6 Fix: Same-lane batons should be rejected
+        route_decision = RouterDecision.new("info", "general_info", 0.9, [])
+
+        # Agent tries to hand off to its own lane
+        info_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Processing..." } }],
+          state_patch: {},
+          baton: Agents::BaseAgent::Baton.new("info", { intent: "continue" })  # Same lane!
+        )
+
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(info_agent).to receive(:handle).and_return(info_response)
+
+        result = controller.handle_turn(base_turn)
+
+        # Should succeed but stop after first agent
+        expect(result.success).to be true
+        expect(result.lane).to eq("info")
+
+        # Agent should only be called once (not looped)
+        expect(info_agent).to have_received(:handle).once
+
+        # Logger should warn about same-lane handoff
+        expect(logger).to have_received(:warn) do |log_entry|
+          parsed = JSON.parse(log_entry)
+          parsed["event"] == "baton_stop" &&
+            parsed["reason"] == "same_lane_handoff" &&
+            parsed["target"] == "info" &&
+            parsed["current_lane"] == "info"
+        end
+      end
+
+      it "allows legitimate cross-lane handoffs" do
+        # Bug #6 Fix: Different-lane batons should still work
+        route_decision = RouterDecision.new("info", "start_shopping", 0.9, [])
+
+        info_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Switching..." } }],
+          state_patch: {},
+          baton: Agents::BaseAgent::Baton.new("commerce", { intent: "browse" })  # Different lane ✅
+        )
+
+        commerce_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Welcome to shop" } }],
+          state_patch: {},
+          baton: nil
+        )
+
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(registry).to receive(:for_lane).with("commerce").and_return(commerce_agent)
+        allow(info_agent).to receive(:handle).and_return(info_response)
+        allow(commerce_agent).to receive(:handle).and_return(commerce_response)
+
+        result = controller.handle_turn(base_turn)
+
+        # Should succeed with both agents called
+        expect(result.success).to be true
+        expect(result.lane).to eq("commerce")
+        expect(info_agent).to have_received(:handle).once
+        expect(commerce_agent).to have_received(:handle).once
+      end
+
+      it "stops same-lane baton before reaching hop limit" do
+        # Bug #6 Fix: Same-lane check happens before hop limit check
+        route_decision = RouterDecision.new("info", "test", 0.9, [])
+
+        # Agent returns same-lane baton (would normally loop MAX_BATON_HOPS times)
+        info_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Looping..." } }],
+          state_patch: {},
+          baton: Agents::BaseAgent::Baton.new("info", {})  # Same lane
+        )
+
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(info_agent).to receive(:handle).and_return(info_response)
+
+        result = controller.handle_turn(base_turn)
+
+        # Should stop immediately (hop 0), not after MAX_BATON_HOPS
+        # If same-lane check didn't work, agent would be called 3 times (initial + 2 hops)
+        expect(result.success).to be true
+        expect(info_agent).to have_received(:handle).once
+
+        # Should log same_lane_handoff warning
+        expect(logger).to have_received(:warn) do |log_json|
+          log = JSON.parse(log_json)
+          log["event"] == "baton_stop" &&
+          log["reason"] == "same_lane_handoff" &&
+          log["target"] == "info" &&
+          log["current_lane"] == "info"
+        end
+      end
+    end
+
     context "with validation error" do
       before do
         # Create corrupted state (invalid structure)

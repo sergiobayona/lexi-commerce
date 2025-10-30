@@ -89,7 +89,7 @@ module State
 
           save_state!(session_key, state)
 
-          break unless continue_baton?(baton, hop)
+          break unless continue_baton?(baton, hop, state["current_lane"])
 
           hop += 1
         end
@@ -231,8 +231,9 @@ module State
       @redis.setex(session_key, DEFAULT_SESSION_TTL, state.to_json)
     end
 
-    def continue_baton?(baton, hop)
+    def continue_baton?(baton, hop, current_lane)
       return false unless baton
+
       if hop >= MAX_BATON_HOPS
         @logger.info({
           event: "baton_stop",
@@ -247,6 +248,17 @@ module State
           event: "baton_stop",
           reason: "invalid_lane",
           target: baton.target
+        }.to_json)
+        return false
+      end
+
+      # Prevent same-lane handoffs (agent handing off to itself)
+      if baton.target == current_lane
+        @logger.warn({
+          event: "baton_stop",
+          reason: "same_lane_handoff",
+          target: baton.target,
+          current_lane: current_lane
         }.to_json)
         return false
       end
