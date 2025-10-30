@@ -5,7 +5,8 @@ require_relative "../../../lib/agent_config"
 module State
   class Controller
     # Result data structure returned from handle_turn
-    TurnResult = Data.define(:success, :messages, :state_version, :lane, :error)
+    # Bug #9 Fix: Added initial_lane and initial_intent to preserve router decision
+    TurnResult = Data.define(:success, :messages, :state_version, :lane, :initial_lane, :initial_intent, :error)
 
     # Configuration defaults
     DEFAULT_SESSION_TTL = 86_400      # 24 hours
@@ -60,12 +61,14 @@ module State
         route_decision = nil
         agent_response = nil
         accumulated_messages = []  # Bug #8 Fix: Collect all agent messages
+        initial_route_decision = nil  # Bug #9 Fix: Preserve initial router decision
 
         loop do
           previous_lane = route_decision&.lane || state["current_lane"]
 
           if hop.zero?
             route_decision = @router.route(turn: turn, state: state)
+            initial_route_decision = route_decision  # Bug #9 Fix: Capture initial routing
             log_routing(turn, route_decision)
           else
             route_decision = build_baton_decision(baton, route_decision)
@@ -112,7 +115,9 @@ module State
           success: true,
           messages: accumulated_messages,  # Bug #8 Fix: Return all messages from baton chain
           state_version: nil, # No longer tracking versions
-          lane: route_decision.lane,
+          lane: route_decision.lane,  # Final lane after baton handoffs
+          initial_lane: initial_route_decision.lane,  # Bug #9 Fix: Initial router decision
+          initial_intent: initial_route_decision.intent,  # Bug #9 Fix: Initial intent
           error: nil
         )
 
@@ -316,6 +321,8 @@ module State
         messages: [],
         state_version: nil,
         lane: nil,
+        initial_lane: nil,  # Bug #9 Fix
+        initial_intent: nil,  # Bug #9 Fix
         error: "duplicate_turn"
       )
     end
@@ -326,6 +333,8 @@ module State
         messages: [],
         state_version: nil,
         lane: nil,
+        initial_lane: nil,  # Bug #9 Fix
+        initial_intent: nil,  # Bug #9 Fix
         error: message
       )
     end
@@ -336,6 +345,8 @@ module State
         messages: [],
         state_version: nil,
         lane: nil,
+        initial_lane: nil,  # Bug #9 Fix
+        initial_intent: nil,  # Bug #9 Fix
         error: message
       )
     end

@@ -708,6 +708,124 @@ RSpec.describe State::Controller do
       end
     end
 
+    context "initial routing decision tracking" do
+      # Bug #9 Fix: Initial router decision should be preserved on baton handoffs
+
+      it "preserves initial routing decision when no baton handoff occurs" do
+        route_decision = RouterDecision.new("info", "business_hours", 0.95, ["keyword_match"])
+        agent_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "We're open 9am-5pm" } }],
+          state_patch: {},
+          baton: nil
+        )
+
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(info_agent).to receive(:handle).and_return(agent_response)
+
+        result = controller.handle_turn(base_turn)
+
+        # Without baton handoff, initial and final lanes should match
+        expect(result.initial_lane).to eq("info")
+        expect(result.initial_intent).to eq("business_hours")
+        expect(result.lane).to eq("info")
+      end
+
+      it "preserves initial routing decision on single baton handoff" do
+        # Router classifies as "info" with intent "return_policy"
+        route_decision = RouterDecision.new("info", "return_policy", 0.95, ["policy_keywords"])
+
+        # Info agent hands off to commerce
+        info_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Let me get the details..." } }],
+          state_patch: {},
+          baton: Agents::BaseAgent::Baton.new("commerce", { context: "policy" })
+        )
+
+        # Commerce agent completes
+        commerce_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "30-day return policy" } }],
+          state_patch: {},
+          baton: nil
+        )
+
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(registry).to receive(:for_lane).with("commerce").and_return(commerce_agent)
+        allow(info_agent).to receive(:handle).and_return(info_response)
+        allow(commerce_agent).to receive(:handle).and_return(commerce_response)
+
+        result = controller.handle_turn(base_turn)
+
+        # Bug #9 Fix: Initial routing decision preserved
+        expect(result.initial_lane).to eq("info")
+        expect(result.initial_intent).to eq("return_policy")
+
+        # Final lane shows where it ended up
+        expect(result.lane).to eq("commerce")
+      end
+
+      it "preserves initial routing decision through multi-hop baton chain" do
+        # Router initially classifies as "info"
+        route_decision = RouterDecision.new("info", "order_status", 0.92, ["order_inquiry"])
+
+        # Setup 3-agent chain: info -> commerce -> support
+        support_agent = instance_double(Agents::BaseAgent)
+
+        info_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Checking order..." } }],
+          state_patch: {},
+          baton: Agents::BaseAgent::Baton.new("commerce", {})
+        )
+
+        commerce_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Found issue..." } }],
+          state_patch: {},
+          baton: Agents::BaseAgent::Baton.new("support", {})
+        )
+
+        support_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "I'll help resolve this" } }],
+          state_patch: {},
+          baton: nil
+        )
+
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(registry).to receive(:for_lane).with("commerce").and_return(commerce_agent)
+        allow(registry).to receive(:for_lane).with("support").and_return(support_agent)
+        allow(info_agent).to receive(:handle).and_return(info_response)
+        allow(commerce_agent).to receive(:handle).and_return(commerce_response)
+        allow(support_agent).to receive(:handle).and_return(support_response)
+
+        result = controller.handle_turn(base_turn)
+
+        # Bug #9 Fix: Initial routing unchanged through entire chain
+        expect(result.initial_lane).to eq("info")
+        expect(result.initial_intent).to eq("order_status")
+
+        # Final lane shows last agent in chain
+        expect(result.lane).to eq("support")
+
+        # All messages accumulated
+        expect(result.messages.size).to eq(3)
+      end
+
+      it "sets initial routing fields to nil on error" do
+        # Force an error by corrupting state
+        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
+        corrupted_state = { "tenant_id" => nil }
+        redis.set(session_key, corrupted_state.to_json)
+
+        result = controller.handle_turn(base_turn)
+
+        expect(result.success).to be false
+        expect(result.initial_lane).to be_nil
+        expect(result.initial_intent).to be_nil
+        expect(result.lane).to be_nil
+      end
+    end
+
     context "with validation error" do
       before do
         # Create corrupted state (invalid structure)

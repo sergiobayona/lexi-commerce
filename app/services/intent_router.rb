@@ -20,7 +20,6 @@ class IntentRouter
 
     # Call LLM with structured schema output
     response = @client.with_instructions(system_prompt).with_schema(Schemas::RouterDecisionSchema).ask(prompt)
-    binding.pry
 
     # Parse & clamp (with_schema returns response with .content as hash)
     result = response.content
