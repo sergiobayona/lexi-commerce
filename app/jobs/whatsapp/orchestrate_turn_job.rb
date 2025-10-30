@@ -36,10 +36,9 @@ module Whatsapp
       # Log orchestration result
       log_orchestration_result(wa_message, result)
 
-      # TODO: Uncomment when SendResponseJob is implemented
-      # if result.success && result.messages.present?
-      #   enqueue_response_job(wa_message, result.messages)
-      # end
+      if result.success && result.messages.present?
+        enqueue_response_job(wa_message, result.messages)
+      end
 
       # Mark as orchestrated to prevent duplicate processing
       mark_orchestrated(wa_message)
@@ -128,12 +127,11 @@ module Whatsapp
       end
     end
 
-    # TODO: Implement when SendResponseJob is created
-    # def enqueue_response_job(wa_message, messages)
-    #   Whatsapp::SendResponseJob.perform_later(
-    #     wa_message: wa_message,  # Pass object, not IDs
-    #     messages: messages
-    #   )
-    # end
+    def enqueue_response_job(wa_message, messages)
+      Whatsapp::SendResponseJob.perform_later(
+        wa_message: wa_message,
+        messages: messages
+      )
+    end
   end
 end
