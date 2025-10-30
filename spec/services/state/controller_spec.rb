@@ -8,12 +8,7 @@ RSpec.describe State::Controller do
   let(:info_agent) { instance_double(Agents::InfoAgent) }
   let(:commerce_agent) { instance_double(Agents::CommerceAgent) }
   let(:support_agent) { instance_double(Agents::SupportAgent) }
-  let(:registry) do
-    instance_double(
-      AgentRegistry,
-      for_lane: info_agent
-    )
-  end
+  let(:registry) { instance_double(AgentRegistry) }
   let(:logger) { instance_double(Logger, info: nil, warn: nil, error: nil) }
 
   let(:controller) do
@@ -56,7 +51,7 @@ RSpec.describe State::Controller do
         Agents::BaseAgent::AgentResponse.new(
           messages: [{ type: "text", text: { body: "Hello!" } }],
           state_patch: { "greeted" => true },
-          handoff: nil
+          baton: nil
         )
       end
 
@@ -219,7 +214,7 @@ RSpec.describe State::Controller do
         Agents::BaseAgent::AgentResponse.new(
           messages: [{ type: "text", text: { body: "Your cart is empty" } }],
           state_patch: { "last_view" => Time.now.utc.iso8601 },
-          handoff: nil
+          baton: nil
         )
       end
 
@@ -265,23 +260,40 @@ RSpec.describe State::Controller do
         RouterDecision.new("info", "start_shopping", 0.9, ["wants_to_shop"])
       end
 
-      let(:agent_response) do
+      let(:info_response) do
         Agents::BaseAgent::AgentResponse.new(
           messages: [{ type: "text", text: { body: "Switching to commerce..." } }],
           state_patch: {},
-          handoff: {
-            to_lane: "commerce",
+          baton: Agents::BaseAgent::Baton.new("commerce", {
             carry_state: {
               "initiated_from" => "info"
-            }
-          }
+            },
+            intent: "view_cart"
+          })
+        )
+      end
+
+      let(:commerce_response) do
+        Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Your cart is empty" } }],
+          state_patch: { "handled_by" => "commerce" },
+          baton: nil
         )
       end
 
       before do
         allow(router).to receive(:route).and_return(route_decision)
         allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
-        allow(info_agent).to receive(:handle).and_return(agent_response)
+        allow(registry).to receive(:for_lane).with("commerce").and_return(commerce_agent)
+        allow(info_agent).to receive(:handle).and_return(info_response)
+        allow(commerce_agent).to receive(:handle).and_return(commerce_response)
+      end
+
+      it "runs the baton target agent" do
+        controller.handle_turn(base_turn)
+
+        expect(info_agent).to have_received(:handle).once
+        expect(commerce_agent).to have_received(:handle).once
       end
 
       it "updates lane in state" do
@@ -300,6 +312,14 @@ RSpec.describe State::Controller do
         state = JSON.parse(redis.get(session_key))
 
         expect(state["initiated_from"]).to eq("info")
+        expect(state["handled_by"]).to eq("commerce")
+      end
+
+      it "returns the baton agent response messages" do
+        result = controller.handle_turn(base_turn)
+
+        expect(result.messages).to eq(commerce_response.messages)
+        expect(result.lane).to eq("commerce")
       end
     end
 
@@ -377,7 +397,7 @@ RSpec.describe State::Controller do
         Agents::BaseAgent::AgentResponse.new(
           messages: [{ type: "text", text: { body: "Added to cart" } }],
           state_patch: { "cart_items" => [1] },
-          handoff: nil
+          baton: nil
         )
       end
 
@@ -435,7 +455,7 @@ RSpec.describe State::Controller do
       agent_response = Agents::BaseAgent::AgentResponse.new(
         messages: [{ type: "text", text: { body: "Hi" } }],
         state_patch: {},
-        handoff: nil
+        baton: nil
       )
 
       allow(router).to receive(:route).and_return(route_decision)

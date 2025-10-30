@@ -161,8 +161,8 @@ RSpec.describe AgentConfig do
   end
 
   describe "configuration loading" do
-    it "loads configuration from config/agents.yml" do
-      expect(File).to exist(Rails.root.join("config/agents.yml"))
+    it "loads configuration from config/routing.yml" do
+      expect(File).to exist(Rails.root.join("config/routing.yml"))
     end
 
     it "has valid structure" do

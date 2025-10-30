@@ -3,6 +3,7 @@
 require_relative "router_decision"
 require_relative "schemas/router_decision_schema"
 require_relative "../../lib/agent_config"
+require_relative "../../lib/routing_config"
 require "ruby_llm"
 
 class IntentRouter
@@ -19,6 +20,7 @@ class IntentRouter
 
     # Call LLM with structured schema output
     response = @client.with_instructions(system_prompt).with_schema(Schemas::RouterDecisionSchema).ask(prompt)
+    binding.pry
 
     # Parse & clamp (with_schema returns response with .content as hash)
     result = response.content
@@ -58,25 +60,7 @@ class IntentRouter
   end
 
   def system_prompt
-    # Generate lane descriptions dynamically from config
-    lane_descriptions = AgentConfig.lane_descriptions.map do |lane, description|
-      "      * #{lane}: #{description}"
-    end.join("\n")
-
-    <<~SYS
-    You are the Router for a WhatsApp business copilot. Analyze the user's message and session state to determine:
-
-    - lane: Which agent domain should handle this turn [#{AgentConfig.lanes.join(", ")}]
-    #{lane_descriptions}
-
-    - intent: A compact intent label meaningful to the chosen lane (e.g., business_hours, start_order, refund_request)
-
-    - confidence: Your confidence in this routing decision (0.0 to 1.0)
-
-    - reasoning: 1-3 short reasons for your decision (for observability)
-
-    Consider the user's latest message, any interactive payload, and the compact STATE summary provided.
-    Return ONLY your routing decision in the structured format. Do not answer the user's question.
-    SYS
+    # Load system prompt from routing.yml with additional context
+    RoutingConfig.system_prompt
   end
 end

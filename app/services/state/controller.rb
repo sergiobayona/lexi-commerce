@@ -11,6 +11,8 @@ module State
     DEFAULT_SESSION_TTL = 86_400      # 24 hours
     DEFAULT_IDEMPOTENCY_TTL = 3_600   # 1 hour
 
+    MAX_BATON_HOPS = 2
+
     def initialize(
       redis:,
       router:,
@@ -52,37 +54,43 @@ module State
         # 5. Append inbound turn to dialogue history (in-memory only for routing)
         append_turn_to_dialogue(state, turn)
 
-        # 6. Route to determine lane and intent
-        route_decision = @router.route(turn: turn, state: state)
-        log_routing(turn, route_decision)
+        hop = 0
+        baton = nil
+        route_decision = nil
+        agent_response = nil
 
-        # 7. Update current lane
-        state["current_lane"] = route_decision.lane
+        loop do
+          previous_lane = route_decision&.lane || state["current_lane"]
 
-        # 8. Get agent for the lane
-        agent = @registry.for_lane(route_decision.lane)
+          if hop.zero?
+            route_decision = @router.route(turn: turn, state: state)
+            log_routing(turn, route_decision)
+          else
+            route_decision = build_baton_decision(baton, route_decision)
+            log_baton_reroute(turn, route_decision, baton, hop, previous_lane)
+          end
 
-        # 9. Invoke agent
-        agent_response = agent.handle(
-          turn: turn,
-          state: state,
-          intent: route_decision.intent
-        )
+          state["current_lane"] = route_decision.lane
 
-        # 10. Build complete patch including dialogue update and sticky routing metadata
-        complete_patch = build_complete_patch(state: state, agent_response: agent_response)
+          agent = @registry.for_lane(route_decision.lane)
 
-        # 11. Apply complete patch to state and save to Redis
-        apply_complete_patch!(state, complete_patch)
-        save_state!(session_key, state)
-
-        # 11. Handle lane handoff if requested
-        if agent_response.handoff
-          handle_lane_handoff(
-            session_key: session_key,
+          agent_response = agent.handle(
+            turn: turn,
             state: state,
-            handoff: agent_response.handoff
+            intent: route_decision.intent
           )
+
+          complete_patch = build_complete_patch(state: state, agent_response: agent_response)
+          apply_complete_patch!(state, complete_patch)
+
+          baton = agent_response.baton
+          merge_baton_payload!(state, baton) if baton
+
+          save_state!(session_key, state)
+
+          break unless continue_baton?(baton, hop)
+
+          hop += 1
         end
 
         # 12. Mark message as processed
@@ -218,18 +226,49 @@ module State
       @redis.setex(session_key, DEFAULT_SESSION_TTL, state.to_json)
     end
 
-    def handle_lane_handoff(session_key:, state:, handoff:)
-      target_lane = handoff[:to_lane]
-      return unless AgentConfig.valid_lane?(target_lane)
-
-      state["current_lane"] = target_lane
-
-      # Optionally carry over specific state
-      if handoff[:carry_state]
-        state.merge!(handoff[:carry_state])
+    def continue_baton?(baton, hop)
+      return false unless baton
+      if hop >= MAX_BATON_HOPS
+        @logger.info({
+          event: "baton_stop",
+          reason: "hop_limit",
+          hop_count: hop + 1
+        }.to_json)
+        return false
       end
 
-      save_state!(session_key, state)
+      unless AgentConfig.valid_lane?(baton.target)
+        @logger.warn({
+          event: "baton_stop",
+          reason: "invalid_lane",
+          target: baton.target
+        }.to_json)
+        return false
+      end
+
+      true
+    end
+
+    def build_baton_decision(baton, previous_decision)
+      payload = baton.payload || {}
+      lane = baton.target.to_s
+      intent = payload_value(payload, :intent) || previous_decision&.intent || "follow_up"
+      confidence = payload_value(payload, :confidence)&.to_f || previous_decision&.confidence || 1.0
+      reasons = Array(payload_value(payload, :reasons) || [ "baton_handoff" ])
+
+      RouterDecision.new(lane, intent, confidence, reasons)
+    end
+
+    def merge_baton_payload!(state, baton)
+      payload = baton.payload
+      return unless payload.is_a?(Hash)
+
+      carry_state = payload_value(payload, :carry_state)
+      state.merge!(carry_state) if carry_state.is_a?(Hash)
+    end
+
+    def payload_value(payload, key)
+      payload[key] || payload[key.to_s]
     end
 
     # ============================================
@@ -293,8 +332,23 @@ module State
         intent: decision.intent,
         messages_count: agent_response.messages&.size || 0,
         state_patch_keys: agent_response.state_patch&.keys || [],
-        handoff: agent_response.handoff&.dig(:to_lane),
+        baton_target: agent_response.baton&.target,
         duration_ms: (duration_ms * 1000).round(2)
+      }.to_json)
+    end
+
+    def log_baton_reroute(turn, decision, baton, hop, from_lane)
+      @logger.info({
+        event: "baton_reroute",
+        message_id: turn[:message_id],
+        tenant_id: turn[:tenant_id],
+        wa_id: turn[:wa_id],
+        hop: hop,
+        from_lane: from_lane,
+        to_lane: decision.lane,
+        intent: decision.intent,
+        baton_payload_keys: baton.payload&.keys || [],
+        reasons: decision.reasons
       }.to_json)
     end
 

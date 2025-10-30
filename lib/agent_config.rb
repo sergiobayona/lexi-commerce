@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # AgentConfig provides a single source of truth for agent/lane definitions
-# Loads configuration from config/agents.yml
+# Loads configuration from config/routing.yml
 #
 # Usage:
 #   AgentConfig.lanes                    # => ["info", "product", "commerce", "support"]
@@ -11,7 +11,7 @@
 #   AgentConfig.description_for("info")  # => "General business information..."
 #
 # Adding a new agent:
-#   1. Add entry to config/agents.yml
+#   1. Add entry to config/routing.yml under 'agents' section
 #   2. Create agent class (e.g., app/services/agents/billing_agent.rb)
 #   3. Done! All validations and routing automatically include new agent
 class AgentConfig
@@ -82,14 +82,14 @@ class AgentConfig
     # @raise [ConfigurationError] if file not found or invalid
     def config
       @config ||= begin
-        config_path = Rails.root.join("config/agents.yml")
-        raise ConfigurationError, "agents.yml not found at #{config_path}" unless File.exist?(config_path)
+        config_path = Rails.root.join("config/routing.yml")
+        raise ConfigurationError, "routing.yml not found at #{config_path}" unless File.exist?(config_path)
 
         yaml_content = YAML.load_file(config_path)
         agents = yaml_content["agents"]
 
-        raise ConfigurationError, "agents.yml must contain 'agents' key" unless agents.is_a?(Hash)
-        raise ConfigurationError, "agents.yml 'agents' section is empty" if agents.empty?
+        raise ConfigurationError, "routing.yml must contain 'agents' key" unless agents.is_a?(Hash)
+        raise ConfigurationError, "routing.yml 'agents' section is empty" if agents.empty?
 
         validate_config!(agents)
         agents

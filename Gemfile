@@ -25,6 +25,7 @@ gem "rubocop"
 gem "ruby-lsp"
 gem "ruby_llm"
 gem "ruby_llm-schema"
+gem "liquid"
 
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 # gem "bcrypt", "~> 3.1.7"

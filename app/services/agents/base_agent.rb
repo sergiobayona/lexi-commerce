@@ -4,11 +4,14 @@ module Agents
   # Base agent interface that all lane-specific agents must implement
   # Defines the contract for agent behavior and response structure
   class BaseAgent
+    # Lightweight baton passed between agents through the orchestrator loop
+    Baton = Data.define(:target, :payload)
+
     # AgentResponse data structure
     # messages: Array of message hashes to send to user
     # state_patch: Hash of updates to apply to session state (deep merged)
-    # handoff: Optional hash with { to_lane:, carry_state: } for cross-lane transitions
-    AgentResponse = Data.define(:messages, :state_patch, :handoff)
+    # baton: Optional Baton directing orchestration to another agent
+    AgentResponse = Data.define(:messages, :state_patch, :baton)
 
     # Main handler method that all agents must implement
     # @param turn [Hash] The incoming turn data
@@ -92,17 +95,17 @@ module Agents
       }
     end
 
-    # Helper to request handoff to another lane
-    def handoff_to(lane:, carry_state: {})
-      { to_lane: lane, carry_state: carry_state }
+    # Helper to request baton handoff to another lane
+    def baton_to(lane:, payload: {})
+      Baton.new(lane, payload)
     end
 
     # Helper to build standard response
-    def respond(messages:, state_patch: {}, handoff: nil)
+    def respond(messages:, state_patch: {}, baton: nil)
       AgentResponse.new(
         messages: Array(messages),
         state_patch: state_patch,
-        handoff: handoff
+        baton: baton
       )
     end
   end
