@@ -50,8 +50,10 @@ module State
         # 4. Validate state
         @validator.call!(state)
 
-        # 5. Append inbound turn to dialogue history (in-memory only for routing)
+        # 5. Append inbound turn to dialogue history and persist immediately
+        # This ensures the user's message is saved even if routing/agent fails
         append_turn_to_dialogue(state, turn)
+        save_state!(session_key, state)
 
         hop = 0
         baton = nil

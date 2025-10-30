@@ -511,6 +511,93 @@ RSpec.describe State::Controller do
       end
     end
 
+    context "dialogue preservation on errors" do
+      it "preserves dialogue when router fails" do
+        # Bug #5 Fix: User's message should be saved even if router throws exception
+        allow(router).to receive(:route).and_raise(StandardError, "Router crashed")
+
+        # Attempt to process turn (will fail)
+        result = controller.handle_turn(base_turn)
+
+        expect(result.success).to be false
+        expect(result.error).to match(/Turn processing failed/)
+
+        # Dialogue should still be persisted
+        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
+        state = JSON.parse(redis.get(session_key))
+
+        expect(state["turns"]).to be_an(Array)
+        expect(state["turns"].size).to eq(1)
+
+        last_turn = state["turns"].last
+        expect(last_turn["role"]).to eq("user")
+        expect(last_turn["text"]).to eq("Hello")
+        expect(last_turn["message_id"]).to eq(base_turn[:message_id])
+      end
+
+      it "preserves dialogue when agent fails" do
+        # Bug #5 Fix: User's message should be saved even if agent throws exception
+        route_decision = RouterDecision.new("info", "general_info", 0.9, [])
+
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(info_agent).to receive(:handle).and_raise(StandardError, "Agent crashed")
+
+        # Attempt to process turn (will fail)
+        result = controller.handle_turn(base_turn)
+
+        expect(result.success).to be false
+        expect(result.error).to match(/Turn processing failed/)
+
+        # Dialogue should still be persisted
+        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
+        state = JSON.parse(redis.get(session_key))
+
+        expect(state["turns"]).to be_an(Array)
+        expect(state["turns"].size).to eq(1)
+
+        last_turn = state["turns"].last
+        expect(last_turn["role"]).to eq("user")
+        expect(last_turn["text"]).to eq("Hello")
+        expect(last_turn["message_id"]).to eq(base_turn[:message_id])
+      end
+
+      it "does not duplicate dialogue on successful retry after error" do
+        # Bug #5 Fix: After error is fixed, retry should not duplicate dialogue
+        route_decision = RouterDecision.new("info", "general_info", 0.9, [])
+        agent_response = Agents::BaseAgent::AgentResponse.new(
+          messages: [{ type: "text", text: { body: "Success" } }],
+          state_patch: {},
+          baton: nil
+        )
+
+        # First attempt: router fails
+        allow(router).to receive(:route).and_raise(StandardError, "Router crashed")
+        first_result = controller.handle_turn(base_turn)
+        expect(first_result.success).to be false
+
+        # Dialogue should be saved
+        session_key = "session:#{base_turn[:tenant_id]}:#{base_turn[:wa_id]}"
+        state = JSON.parse(redis.get(session_key))
+        expect(state["turns"].size).to eq(1)
+
+        # Second attempt: webhook retry with same message (now marked as processed)
+        allow(router).to receive(:route).and_return(route_decision)
+        allow(registry).to receive(:for_lane).with("info").and_return(info_agent)
+        allow(info_agent).to receive(:handle).and_return(agent_response)
+
+        retry_result = controller.handle_turn(base_turn)
+
+        # Should return duplicate_turn (message already processed)
+        expect(retry_result.success).to be true
+        expect(retry_result.error).to eq("duplicate_turn")
+
+        # Dialogue should NOT be duplicated
+        state = JSON.parse(redis.get(session_key))
+        expect(state["turns"].size).to eq(1)
+      end
+    end
+
     context "logging" do
       let(:route_decision) do
         RouterDecision.new("commerce", "add_to_cart", 0.92, ["user_intent", "high_confidence"])
