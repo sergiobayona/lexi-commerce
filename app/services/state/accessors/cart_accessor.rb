@@ -67,7 +67,7 @@ module State
         # Recalculate subtotal
         new_subtotal = items.sum { |item| item["quantity"] * item["price_cents"] }
 
-        {
+        patch = {
           "commerce" => {
             "cart" => {
               "items" => items,
@@ -77,6 +77,11 @@ module State
             "last_update" => Time.now.utc.iso8601
           }
         }
+
+        # Apply patch to internal state so summary() sees updated data
+        apply_patch!(patch)
+
+        patch
       end
 
       # Remove item from cart (returns state patch)
@@ -89,7 +94,7 @@ module State
         # Recalculate subtotal
         new_subtotal = items.sum { |item| item["quantity"] * item["price_cents"] }
 
-        {
+        patch = {
           "commerce" => {
             "cart" => {
               "items" => items,
@@ -98,6 +103,11 @@ module State
             "last_update" => Time.now.utc.iso8601
           }
         }
+
+        # Apply patch to internal state so summary() sees updated data
+        apply_patch!(patch)
+
+        patch
       end
 
       # Update item quantity (returns state patch)
@@ -117,7 +127,7 @@ module State
         # Recalculate subtotal
         new_subtotal = items.sum { |item| item["quantity"] * item["price_cents"] }
 
-        {
+        patch = {
           "commerce" => {
             "cart" => {
               "items" => items,
@@ -126,12 +136,17 @@ module State
             "last_update" => Time.now.utc.iso8601
           }
         }
+
+        # Apply patch to internal state so summary() sees updated data
+        apply_patch!(patch)
+
+        patch
       end
 
       # Clear all items from cart (returns state patch)
       # @return [Hash] State patch to apply
       def clear
-        {
+        patch = {
           "commerce" => {
             "cart" => {
               "items" => [],
@@ -141,6 +156,11 @@ module State
             "last_update" => Time.now.utc.iso8601
           }
         }
+
+        # Apply patch to internal state so summary() sees updated data
+        apply_patch!(patch)
+
+        patch
       end
 
       # Get formatted cart summary
@@ -171,6 +191,24 @@ module State
       def ensure_cart_initialized!
         @state["commerce"] ||= {}
         @state["commerce"]["cart"] ||= { "items" => [], "subtotal_cents" => 0 }
+      end
+
+      # Apply a state patch to the internal state
+      # This ensures that subsequent queries (like summary()) see the updated data
+      def apply_patch!(patch)
+        deep_merge!(@state, patch)
+      end
+
+      # Deep merge helper that mutates the target hash
+      def deep_merge!(target, source)
+        source.each do |key, value|
+          if value.is_a?(Hash) && target[key].is_a?(Hash)
+            deep_merge!(target[key], value)
+          else
+            target[key] = value
+          end
+        end
+        target
       end
     end
   end

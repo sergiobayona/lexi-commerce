@@ -9,6 +9,7 @@ module Agents
     def initialize(model: "gpt-4o-mini")
       @model = model
       @state_holder = { state: nil }  # Holds current state for accessor injection
+      @tool_results = []  # Collects tool results during chat execution
       @chat = RubyLLM.chat(model: @model)
 
       # Tools will be registered in handle() after state is available
@@ -21,6 +22,9 @@ module Agents
 
       # Store state for accessor injection
       @state_holder[:state] = state
+
+      # Clear previous tool results
+      @tool_results.clear
 
       # Register tools with state accessors
       register_tools_with_state
@@ -65,13 +69,15 @@ module Agents
       cart_accessor_provider = -> { State::Accessors::CartAccessor.new(@state_holder[:state]) }
       state_provider = -> { @state_holder[:state] }
 
-      # Get tools with injected accessors
+      # Get tools with injected accessors and wrap them to capture results
       @tools = Tools::CommerceRegistry.all(
         cart_accessor_provider: cart_accessor_provider,
         state_provider: state_provider
-      )
+      ).map do |tool|
+        wrap_tool_to_capture_result(tool)
+      end
 
-      # Register all tools (clears previous registration)
+      # Register all wrapped tools (clears previous registration)
       @tools.each { |tool| @chat.with_tool(tool) }
 
       # Set/update system instructions
@@ -112,12 +118,58 @@ module Agents
       context_parts.join("\n\n")
     end
 
+    # Wrap a tool to capture its result for state patch extraction
+    def wrap_tool_to_capture_result(original_tool)
+      # Create a wrapper class that delegates to the original tool
+      # but captures the result
+      wrapper = Class.new(original_tool.class) do
+        define_method(:initialize) do |*args, **kwargs|
+          @original_tool = original_tool
+          @tool_results_collector = nil
+        end
+
+        define_method(:execute) do |**params|
+          result = @original_tool.execute(**params)
+          # Store the result for extraction
+          @tool_results_collector << result if @tool_results_collector
+          result
+        end
+
+        # Delegate all other methods to the original tool
+        define_method(:method_missing) do |method, *args, &block|
+          @original_tool.send(method, *args, &block)
+        end
+
+        define_method(:respond_to_missing?) do |method, include_private = false|
+          @original_tool.respond_to?(method, include_private)
+        end
+
+        define_method(:set_collector) do |collector|
+          @tool_results_collector = collector
+        end
+      end
+
+      wrapped = wrapper.new
+      wrapped.set_collector(@tool_results)
+      wrapped
+    end
+
     def extract_state_patches_from_response(response)
-      # RubyLLM tools can return state_patch in their responses
-      # This is a placeholder for now - in a more sophisticated setup,
-      # we'd parse tool results to extract state patches
-      # For now, tools handle state updates, so return empty patch
-      {}
+      # Extract state patches from collected tool results
+      # Tools return hashes that may contain a 'state_patch' key
+      merged_patch = {}
+
+      @tool_results.each do |result|
+        if result.is_a?(Hash) && result.key?(:state_patch)
+          patch = result[:state_patch]
+          merged_patch.deep_merge!(patch) if patch.is_a?(Hash)
+        elsif result.is_a?(Hash) && result.key?("state_patch")
+          patch = result["state_patch"]
+          merged_patch.deep_merge!(patch) if patch.is_a?(Hash)
+        end
+      end
+
+      merged_patch
     end
 
     def handle_error(error, context)
