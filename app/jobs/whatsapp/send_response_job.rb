@@ -46,6 +46,9 @@ module Whatsapp
     private
 
     def send_message(wa_message, message)
+      # Convert to hash with indifferent access to handle both string and symbol keys
+      message = message.with_indifferent_access if message.is_a?(Hash)
+
       case message[:type]&.to_sym
       when :text
         # Extract text body from nested structure: {type: "text", text: {body: "..."}}
