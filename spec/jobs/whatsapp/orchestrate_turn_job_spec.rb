@@ -191,4 +191,116 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
       end
     end
   end
+
+  describe "#serialize_messages (private)" do
+    let(:job) { described_class.new }
+
+    context "with plain hash messages" do
+      it "stringifies keys and returns serializable hashes" do
+        messages = [
+          { type: "text", text: { body: "Hello" } },
+          { "type" => "text", "text" => { "body" => "World" } }
+        ]
+
+        result = job.send(:serialize_messages, messages)
+
+        expect(result).to be_an(Array)
+        expect(result.size).to eq(2)
+        expect(result.first).to eq({ "type" => "text", "text" => { "body" => "Hello" } })
+        expect(result.last).to eq({ "type" => "text", "text" => { "body" => "World" } })
+      end
+    end
+
+    context "with RubyLLM::Message objects" do
+      it "extracts content from top-level RubyLLM::Message objects" do
+        # Create a mock RubyLLM::Message object
+        llm_message = double("RubyLLM::Message")
+        allow(llm_message).to receive(:is_a?).with(RubyLLM::Message).and_return(true)
+        allow(llm_message).to receive(:content).and_return(double(to_s: "Response from LLM"))
+
+        messages = [llm_message]
+
+        result = job.send(:serialize_messages, messages)
+
+        expect(result).to be_an(Array)
+        expect(result.size).to eq(1)
+        expect(result.first).to eq("Response from LLM")
+      end
+
+      it "extracts content from nested RubyLLM::Message objects in hashes (ACTUAL BUG CASE)" do
+        # This is the actual case from the production logs
+        # Agent returns: { type: "text", text: { body: <RubyLLM::Message> } }
+        llm_message = double("RubyLLM::Message")
+        allow(llm_message).to receive(:is_a?).with(RubyLLM::Message).and_return(true)
+        allow(llm_message).to receive(:content).and_return(double(to_s: "Hello! How can I assist you today?"))
+
+        messages = [
+          { type: "text", text: { body: llm_message } }
+        ]
+
+        result = job.send(:serialize_messages, messages)
+
+        expect(result).to be_an(Array)
+        expect(result.size).to eq(1)
+        expect(result.first).to eq({
+          "type" => "text",
+          "text" => { "body" => "Hello! How can I assist you today?" }
+        })
+      end
+    end
+
+    context "with mixed message types" do
+      it "handles both plain hashes and nested RubyLLM::Message objects" do
+        llm_message = double("RubyLLM::Message")
+        allow(llm_message).to receive(:is_a?).with(RubyLLM::Message).and_return(true)
+        allow(llm_message).to receive(:content).and_return(double(to_s: "LLM response"))
+
+        messages = [
+          { type: "text", text: { body: "First message" } },
+          { type: "text", text: { body: llm_message } },
+          { type: "text", text: { body: "Third message" } }
+        ]
+
+        result = job.send(:serialize_messages, messages)
+
+        expect(result.size).to eq(3)
+        expect(result[0]["text"]["body"]).to eq("First message")
+        expect(result[1]["text"]["body"]).to eq("LLM response")
+        expect(result[2]["text"]["body"]).to eq("Third message")
+      end
+    end
+
+    context "with nil or empty inputs" do
+      it "returns empty array for nil" do
+        expect(job.send(:serialize_messages, nil)).to eq([])
+      end
+
+      it "returns empty array for empty array" do
+        expect(job.send(:serialize_messages, [])).to eq([])
+      end
+    end
+
+    context "with primitive types" do
+      it "returns strings as-is" do
+        messages = ["Plain string message"]
+
+        result = job.send(:serialize_messages, messages)
+
+        expect(result.size).to eq(1)
+        expect(result.first).to eq("Plain string message")
+      end
+
+      it "handles arrays within message structures" do
+        messages = [
+          { type: "text", options: ["Option 1", "Option 2", "Option 3"] }
+        ]
+
+        result = job.send(:serialize_messages, messages)
+
+        expect(result.size).to eq(1)
+        expect(result.first["type"]).to eq("text")
+        expect(result.first["options"]).to eq(["Option 1", "Option 2", "Option 3"])
+      end
+    end
+  end
 end

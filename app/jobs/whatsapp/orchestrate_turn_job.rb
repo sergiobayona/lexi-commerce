@@ -128,10 +128,44 @@ module Whatsapp
     end
 
     def enqueue_response_job(wa_message, messages)
+      # Serialize messages to ensure they're JSON-compatible for ActiveJob
+      # RubyLLM::Message objects cannot be serialized by ActiveJob
+      serializable_messages = serialize_messages(messages)
+
       Whatsapp::SendResponseJob.perform_later(
         wa_message: wa_message,
-        messages: messages
+        messages: serializable_messages
       )
+    end
+
+    # Convert messages to JSON-serializable format
+    # Handles RubyLLM::Message objects and plain hashes with recursive deep serialization
+    def serialize_messages(messages)
+      return [] if messages.nil?
+
+      Array(messages).map do |message|
+        serialize_message_value(message)
+      end
+    end
+
+    # Recursively serialize a message value (handles nested structures)
+    def serialize_message_value(value)
+      # Check for RubyLLM::Message first (before Hash, since it might also respond to hash methods)
+      if defined?(RubyLLM::Message) && value.is_a?(RubyLLM::Message)
+        # Extract text content from RubyLLM::Message objects
+        value.content.to_s
+      elsif value.is_a?(Hash)
+        # Recursively serialize hash values to handle nested RubyLLM::Message objects
+        value.each_with_object({}) do |(key, val), result|
+          result[key.to_s] = serialize_message_value(val)
+        end
+      elsif value.is_a?(Array)
+        # Recursively serialize array elements
+        value.map { |item| serialize_message_value(item) }
+      else
+        # Return primitive values as-is (String, Integer, Boolean, nil, etc.)
+        value
+      end
     end
   end
 end
