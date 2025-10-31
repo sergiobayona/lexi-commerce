@@ -67,3 +67,9 @@ group :development, :test do
   gem "rubocop-rails-omakase", require: false
   gem "pry-rails"
 end
+
+group :test do
+  # Record and replay HTTP interactions for testing
+  gem "vcr"
+  gem "webmock"
+end
