@@ -94,7 +94,7 @@ module Whatsapp
         uri = URI.parse("#{ENV["RESPONSE_URL"]}/#{graph_api_version}#{path}")
 
         open_t, read_t, write_t = http_timeouts
-        res = Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
+        res = Net::HTTP.start(uri.host, uri.port) do |http|
           http.open_timeout  = open_t
           http.read_timeout  = read_t
           http.write_timeout = write_t if http.respond_to?(:write_timeout)
