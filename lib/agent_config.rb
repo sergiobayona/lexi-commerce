@@ -53,6 +53,13 @@ class AgentConfig
       config.dig(lane.to_s, "description")
     end
 
+    # Get model for a specific lane
+    # @param lane [String] Lane identifier
+    # @return [String] Model name (defaults to "gpt-4o-mini" if not specified)
+    def model_for(lane)
+      config.dig(lane.to_s, "model") || "gpt-4o-mini"
+    end
+
     # Get hash of all lane descriptions
     # @return [Hash<String, String>] Map of lane names to descriptions
     def lane_descriptions

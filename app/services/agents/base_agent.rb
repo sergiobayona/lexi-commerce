@@ -108,5 +108,29 @@ module Agents
         baton: baton
       )
     end
+
+    # Standardized error handling for all agents
+    # Logs error details and returns user-friendly error response
+    # @param error [StandardError] The error that occurred
+    # @param context [String] Agent name or context for logging
+    # @param custom_message [String, nil] Optional custom user-facing message
+    # @return [AgentResponse] Error response with state patch
+    def handle_error(error, context, custom_message: nil)
+      Rails.logger.error "[#{context}] Error: #{error.message}"
+      Rails.logger.error error.backtrace.join("\n")
+
+      # Default user-facing message if not provided
+      user_message = custom_message || "Lo siento, tuve un problema procesando tu solicitud. ¿Puedes intentar de nuevo?"
+
+      respond(
+        messages: text_message(user_message),
+        state_patch: {
+          "dialogue" => {
+            "last_error" => error.message,
+            "error_timestamp" => Time.now.utc.iso8601
+          }
+        }
+      )
+    end
   end
 end

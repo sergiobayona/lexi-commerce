@@ -2,180 +2,222 @@
 
 module Agents
   # Support agent handles customer service, complaints, refunds, order issues
+  # Uses RubyLLM with specialized support tools and case state management
   class SupportAgent < BaseAgent
+    attr_reader :chat
+
+    def initialize(model: "gpt-4o-mini")
+      @model = model
+      @state_holder = { state: nil }  # Holds current state for accessor injection
+      @chat = RubyLLM.chat(model: @model)
+
+      # Tools will be registered in handle() after state is available
+      setup_tool_monitoring
+    end
+
     def handle(turn:, state:, intent:)
-      case intent
-      when "order_status"
-        handle_order_status(turn, state)
-      when "refund_request"
-        handle_refund_request(turn, state)
-      when "complaint"
-        handle_complaint(turn, state)
-      when "technical_issue"
-        handle_technical_issue(turn, state)
-      when "cancel_order"
-        handle_cancel_order(turn, state)
-      when "human_handoff"
-        handle_human_handoff(turn, state)
-      else
-        handle_support_default(turn, state)
+      question = turn[:text]
+      Rails.logger.info "[SupportAgent] Handling intent '#{intent}' with question: #{question}"
+
+      # Store state for accessor injection
+      @state_holder[:state] = state
+
+      # Register tools with state accessors
+      register_tools_with_state
+
+      # Build context from support case state and dialogue history
+      context = build_context(state)
+
+      # Use RubyLLM chat with tools to get the response
+      full_question = context.empty? ? question : "#{context}\n\nUser question: #{question}"
+      response = @chat.ask(full_question)
+
+      # Build state patch
+      state_patch = {
+        "support" => {
+          "last_interaction" => Time.now.utc.iso8601
+        },
+        "dialogue" => {
+          "last_support_query" => question
+        }
+      }
+
+      # Check if we should trigger human handoff based on conversation patterns
+      if should_trigger_handoff?(state, response)
+        Rails.logger.info "[SupportAgent] Triggering human handoff based on conversation analysis"
+        # Don't modify state_patch here - let CaseManager handle it via tools
       end
+
+      # Return structured AgentResponse
+      respond(
+        messages: text_message(response),
+        state_patch: state_patch
+      )
+    rescue StandardError => e
+      handle_error(e, "SupportAgent")
     end
 
     private
 
-    def handle_order_status(turn, state)
-      last_order_id = state.dig("support", "last_order_id")
+    def register_tools_with_state
+      # Create accessor provider that will be called by tools
+      case_accessor_provider = -> { State::Accessors::CaseAccessor.new(@state_holder[:state]) }
 
-      if last_order_id
-        respond(
-          messages: text_message(
-            "📦 Estado de tu pedido ##{last_order_id}:\n\n" \
-            "Estado: En preparación\n" \
-            "Tiempo estimado: 30-45 minutos\n\n" \
-            "Te notificaremos cuando esté en camino."
-          ),
-          state_patch: {
-            "support" => {
-              "last_status_check" => Time.now.utc.iso8601
-            }
-          }
-        )
-      else
-        respond(
-          messages: text_message(
-            "Para revisar el estado de tu pedido, por favor compárteme el número de orden."
-          ),
-          state_patch: {
-            "support" => { "awaiting_order_number" => true }
-          }
-        )
+      # Get tools with injected accessors
+      @tools = Tools::SupportRegistry.all(case_accessor_provider: case_accessor_provider)
+
+      # Register all tools (clears previous registration)
+      @tools.each { |tool| @chat.with_tool(tool) }
+
+      # Set/update system instructions
+      @chat.with_instructions(system_instructions)
+    end
+
+    def setup_tool_monitoring
+      @chat.on_tool_call do |tool_call|
+        Rails.logger.info "[SupportAgent] Tool invoked: #{tool_call.name} with arguments: #{tool_call.arguments}"
       end
     end
 
-    def handle_refund_request(turn, state)
+    def build_context(state)
+      context_parts = []
+
+      # Case context
+      cases = State::Accessors::CaseAccessor.new(state)
+      if cases.has_active_case?
+        summary = cases.summary
+        context_parts << "Active case: #{summary[:case_id]} (#{summary[:case_type]}, level #{summary[:escalation_level]})"
+      end
+
+      # Human handoff status
+      if cases.human_handoff_requested?
+        context_parts << "Human handoff requested"
+      end
+
+      # Recent complaint/negative sentiment analysis
+      recent_turns = state["turns"]&.last(5) || []
+      negative_turns = recent_turns.select { |turn| turn["role"] == "user" && contains_negative_sentiment?(turn["text"]) }
+      if negative_turns.size >= 2
+        context_parts << "Customer frustration detected (#{negative_turns.size} negative messages)"
+      end
+
+      # Recent conversation (last 3 turns)
+      unless recent_turns.empty?
+        formatted_turns = recent_turns.last(3).map do |turn|
+          "#{turn['role'] == 'user' ? 'User' : 'Assistant'}: #{turn['text']}"
+        end.join("\n")
+        context_parts << "Recent conversation:\n#{formatted_turns}"
+      end
+
+      context_parts.join("\n\n")
+    end
+
+    def contains_negative_sentiment?(text)
+      # Simple keyword-based sentiment detection
+      # TODO: Replace with proper sentiment analysis
+      negative_keywords = %w[
+        malo terrible horrible frustrado enojado molesto
+        problema error falla nunca siempre pésimo
+        bad terrible horrible frustrated angry upset
+        problem error issue never always awful
+      ]
+
+      text_lower = text.downcase
+      negative_keywords.any? { |keyword| text_lower.include?(keyword) }
+    end
+
+    def should_trigger_handoff?(state, response)
+      # Check if customer has shown persistent frustration
+      cases = State::Accessors::CaseAccessor.new(state)
+
+      # Already requested handoff
+      return false if cases.human_handoff_requested?
+
+      # Check escalation level
+      if cases.has_active_case?
+        active_case = cases.get_active_case
+        return true if active_case[:escalation_level] >= 2
+      end
+
+      # Check for repeated complaints
+      recent_turns = state["turns"]&.last(10) || []
+      negative_count = recent_turns.count { |turn| turn["role"] == "user" && contains_negative_sentiment?(turn["text"]) }
+
+      negative_count >= 3
+    end
+
+    def handle_error(error, context)
+      Rails.logger.error "[#{context}] Error: #{error.message}"
+      Rails.logger.error error.backtrace.join("\n")
+
       respond(
-        messages: text_message(
-          "💰 Entiendo que solicitas un reembolso.\n\n" \
-          "Para procesarlo necesito:\n" \
-          "1. Número de orden\n" \
-          "2. Motivo del reembolso\n\n" \
-          "¿Puedes compartir esta información?"
-        ),
+        messages: text_message("Lo siento, tuve un problema procesando tu solicitud de soporte. ¿Puedes intentar de nuevo o prefieres hablar con un agente humano?"),
         state_patch: {
-          "support" => {
-            "active_case_id" => "case_#{SecureRandom.hex(4)}",
-            "case_type" => "refund",
-            "opened_at" => Time.now.utc.iso8601
-          },
-          "slots" => {
-            "awaiting_refund_details" => true
+          "dialogue" => {
+            "last_error" => error.message,
+            "error_timestamp" => Time.now.utc.iso8601
           }
         }
       )
     end
 
-    def handle_complaint(turn, state)
-      case_id = "case_#{SecureRandom.hex(4)}"
+    def system_instructions
+      <<~INSTRUCTIONS
+        You are a compassionate and professional customer support agent for Tony's Pizza that helps resolve customer issues, handles complaints, processes refunds, and provides excellent service recovery.
 
-      respond(
-        messages: text_message(
-          "😔 Lamento que hayas tenido una mala experiencia.\n\n" \
-          "He creado el caso ##{case_id} para darle seguimiento.\n\n" \
-          "Por favor cuéntame qué ocurrió para poder ayudarte."
-        ),
-        state_patch: {
-          "support" => {
-            "active_case_id" => case_id,
-            "case_type" => "complaint",
-            "opened_at" => Time.now.utc.iso8601
-          }
-        }
-      )
-    end
+        Available tools:
+        - RefundPolicy: Get detailed refund, return, exchange, and cancellation policy information
+        - CaseManager: Create, update, close, escalate support cases, or request human handoff
+        - ContactSupport: Provide contact information for human support team
 
-    def handle_technical_issue(turn, state)
-      respond(
-        messages: button_message(
-          body: "🔧 ¿Qué tipo de problema técnico estás experimentando?",
-          buttons: [
-            { id: "tech_payment", title: "Pago" },
-            { id: "tech_app", title: "App/Web" },
-            { id: "tech_other", title: "Otro" }
-          ]
-        ),
-        state_patch: {
-          "support" => {
-            "active_case_id" => "case_#{SecureRandom.hex(4)}",
-            "case_type" => "technical",
-            "opened_at" => Time.now.utc.iso8601
-          }
-        }
-      )
-    end
+        Guidelines:
+        - Always be empathetic, patient, and understanding with frustrated customers
+        - Listen carefully to customer concerns before offering solutions
+        - Use RefundPolicy to provide accurate policy information
+        - Create cases with CaseManager for tracking and follow-up
+        - Escalate complex issues or persistent problems using CaseManager action='escalate'
+        - Request human handoff when:
+          * Customer explicitly asks to speak with a person
+          * Issue requires authority beyond your scope
+          * Customer shows persistent frustration after multiple attempts
+          * Escalation level reaches 2 or higher
+        - Be proactive in offering compensation or solutions within policy guidelines
+        - Always confirm customer satisfaction before closing cases
+        - Document all interactions in case notes
 
-    def handle_cancel_order(turn, state)
-      respond(
-        messages: text_message(
-          "❌ Para cancelar tu pedido necesito el número de orden.\n\n" \
-          "Ten en cuenta que solo podemos cancelar pedidos que aún no han sido enviados."
-        ),
-        state_patch: {
-          "support" => {
-            "active_case_id" => "case_#{SecureRandom.hex(4)}",
-            "case_type" => "cancellation",
-            "awaiting_order_number" => true
-          }
-        }
-      )
-    end
+        Response style:
+        - Be warm, empathetic, and professional
+        - Acknowledge customer emotions ("I understand this is frustrating")
+        - Apologize sincerely when appropriate
+        - Provide clear solutions with specific next steps
+        - Set realistic expectations for resolution timelines
+        - Use emojis sparingly and appropriately (😔 for empathy, ✅ for solutions)
+        - Keep responses concise but thorough
 
-    def handle_human_handoff(turn, state)
-      respond(
-        messages: text_message(
-          "👤 Entiendo que prefieres hablar con una persona.\n\n" \
-          "Te estoy conectando con un agente humano. " \
-          "El tiempo de espera estimado es de 5-10 minutos.\n\n" \
-          "Por favor mantente en línea."
-        ),
-        state_patch: {
-          "meta" => {
-            "flags" => {
-              "human_handoff" => true
-            }
-          },
-          "support" => {
-            "active_case_id" => "case_#{SecureRandom.hex(4)}",
-            "case_type" => "human_handoff",
-            "handoff_requested_at" => Time.now.utc.iso8601
-          }
-        }
-      )
-    end
+        Support workflow:
+        1. Acknowledge issue and empathize
+        2. Gather necessary details
+        3. Create case with CaseManager if needed
+        4. Check policies with RefundPolicy
+        5. Offer solution within policy guidelines
+        6. Confirm customer satisfaction
+        7. Close case or escalate if needed
 
-    def handle_support_default(turn, state)
-      respond(
-        messages: list_message(
-          body: "🆘 ¿Cómo puedo ayudarte?",
-          button_text: "Ver opciones",
-          sections: [
-            {
-              title: "Soporte",
-              rows: [
-                { id: "support_order", title: "Estado de pedido", description: "Rastrea tu orden" },
-                { id: "support_refund", title: "Reembolsos", description: "Solicita devolución" },
-                { id: "support_issue", title: "Reportar problema", description: "Quejas y reclamos" },
-                { id: "support_human", title: "Agente humano", description: "Hablar con persona" }
-              ]
-            }
-          ]
-        ),
-        state_patch: {
-          "support" => {
-            "last_interaction" => Time.now.utc.iso8601
-          }
-        }
-      )
+        Escalation triggers:
+        - Customer frustrated after 2+ attempts to resolve
+        - Issue requires manager approval
+        - Policy exception needed
+        - Complex technical or billing issues
+        - Legal or compliance concerns
+
+        Important notes:
+        - Never promise what you can't deliver
+        - Always follow company policies (use RefundPolicy tool)
+        - Document everything in case notes
+        - Prioritize customer satisfaction and retention
+        - When in doubt, escalate or request human handoff
+        - Tools return state_patch - updates apply automatically
+      INSTRUCTIONS
     end
   end
 end

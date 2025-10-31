@@ -53,6 +53,7 @@ class AgentRegistry
     agent_class = AgentConfig.agent_class_for(lane)
     raise ArgumentError, "No agent configured for lane: #{lane}" unless agent_class
 
-    agent_class.new
+    model = AgentConfig.model_for(lane)
+    agent_class.new(model: model)
   end
 end

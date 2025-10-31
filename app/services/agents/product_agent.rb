@@ -2,103 +2,131 @@
 
 module Agents
   # Product agent handles product-specific questions (details, attributes, categories, availability, comparisons)
+  # Uses RubyLLM with specialized product tools for intelligent product queries
   class ProductAgent < BaseAgent
-    def handle(turn:, state:, intent:)
-      case intent
-      when "product_details"
-        handle_product_details(turn, state)
-      when "product_comparison"
-        handle_product_comparison(turn, state)
-      when "product_availability"
-        handle_product_availability(turn, state)
-      when "product_categories"
-        handle_product_categories(turn, state)
-      else
-        handle_product_default(turn, state)
+    attr_reader :chat
+
+    def initialize(model: "gpt-4o-mini")
+      @model = model
+      @tools = Tools::ProductRegistry.all
+      @chat = RubyLLM.chat(model: @model)
+
+      # Register all tools
+      @tools.each { |tool| @chat.with_tool(tool) }
+
+      # Set system instructions
+      @chat.with_instructions(system_instructions)
+
+      # Add tool call monitoring for debugging
+      @chat.on_tool_call do |tool_call|
+        Rails.logger.info "[ProductAgent] Tool invoked: #{tool_call.name} with arguments: #{tool_call.arguments}"
       end
+    end
+
+    # Implement required BaseAgent interface
+    def handle(turn:, state:, intent:)
+      question = turn[:text]
+      Rails.logger.info "[ProductAgent] Handling intent '#{intent}' with question: #{question}"
+
+      # Build context from recent conversation and product focus
+      context = build_context(state)
+
+      # Use RubyLLM chat with tools to get the response
+      full_question = context.empty? ? question : "#{context}\n\nUser question: #{question}"
+      response = @chat.ask(full_question)
+
+      # Extract product IDs mentioned in conversation for context tracking
+      product_ids = extract_product_ids(response)
+
+      # Return structured AgentResponse
+      respond(
+        messages: text_message(response),
+        state_patch: {
+          "slots" => {
+            "product_focus" => product_ids,
+            "last_product_query" => question
+          },
+          "dialogue" => {
+            "last_interaction" => Time.now.utc.iso8601
+          }
+        }
+      )
+    rescue StandardError => e
+      handle_error(e, "ProductAgent")
     end
 
     private
 
-    def handle_product_details(turn, state)
-      respond(
-        messages: text_message(
-          "📋 ¿Sobre qué producto te gustaría saber más?\n\n" \
-          "Puedo contarte sobre ingredientes, precio, tamaño, etc."
-        ),
-        state_patch: {
-          "slots" => {
-            "awaiting_product_name" => true
-          }
-        }
-      )
+    def build_context(state)
+      context_parts = []
+
+      # Include recent turns for pronoun resolution ("the other one", "compare these")
+      recent_turns = state["turns"]&.last(3) || []
+      unless recent_turns.empty?
+        formatted_turns = recent_turns.map do |turn|
+          "#{turn['role'] == 'user' ? 'User' : 'Assistant'}: #{turn['text']}"
+        end.join("\n")
+        context_parts << "Recent conversation:\n#{formatted_turns}"
+      end
+
+      # Include products currently in focus
+      product_focus = state.dig("slots", "product_focus") || []
+      if product_focus.any?
+        context_parts << "Products in focus: #{product_focus.join(', ')}"
+      end
+
+      context_parts.join("\n\n")
     end
 
-    def handle_product_comparison(turn, state)
-      respond(
-        messages: text_message(
-          "🔍 ¿Qué productos te gustaría comparar?\n\n" \
-          "Por favor menciona los nombres de los productos."
-        ),
-        state_patch: {
-          "slots" => {
-            "awaiting_comparison_items" => true
-          }
-        }
-      )
+    def extract_product_ids(response_text)
+      # Extract product IDs from response (format: prod_XXX)
+      response_text.scan(/prod_\d+/).uniq
     end
 
-    def handle_product_availability(turn, state)
-      respond(
-        messages: text_message(
-          "✅ Te ayudo a verificar la disponibilidad.\n\n" \
-          "¿Qué producto estás buscando?"
-        ),
-        state_patch: {
-          "slots" => {
-            "awaiting_product_name" => true,
-            "check_type" => "availability"
-          }
-        }
-      )
-    end
+    def handle_error(error, context)
+      Rails.logger.error "[#{context}] Error: #{error.message}"
+      Rails.logger.error error.backtrace.join("\n")
 
-    def handle_product_categories(turn, state)
       respond(
-        messages: list_message(
-          body: "📂 Nuestras categorías de productos:",
-          button_text: "Ver categorías",
-          sections: [
-            {
-              title: "Categorías Principales",
-              rows: [
-                { id: "cat_food", title: "🍕 Comida", description: "Platos principales y especialidades" },
-                { id: "cat_drinks", title: "🥤 Bebidas", description: "Refrescos, jugos y más" },
-                { id: "cat_desserts", title: "🍰 Postres", description: "Dulces y delicias" },
-                { id: "cat_sides", title: "🍟 Acompañamientos", description: "Guarniciones y extras" }
-              ]
-            }
-          ]
-        ),
+        messages: text_message("Lo siento, tuve un problema procesando tu consulta de productos. ¿Puedes intentar de nuevo?"),
         state_patch: {
           "dialogue" => {
-            "last_category_view" => Time.now.utc.iso8601
+            "last_error" => error.message,
+            "error_timestamp" => Time.now.utc.iso8601
           }
         }
       )
     end
 
-    def handle_product_default(turn, state)
-      respond(
-        messages: text_message(
-          "🛍️ Estás en la sección de productos.\n\n" \
-          "¿Qué te gustaría saber?\n" \
-          "• Ver categorías\n" \
-          "• Detalles de producto\n" \
-          "• Comparar productos\n" \
-          "• Verificar disponibilidad"
-        )
-      )
+    def system_instructions
+      <<~INSTRUCTIONS
+        You are a helpful product specialist for Tony's Pizza that provides accurate information about products, helps customers make informed decisions, and assists with product selection.
+
+        Available tools:
+        - ProductSearch: Search for products by name, category, or keyword
+        - ProductDetails: Get detailed information about a specific product (ingredients, nutritional info, etc.)
+        - ProductAvailability: Check if a product is in stock and available
+        - ProductComparison: Compare multiple products side-by-side
+
+        Guidelines:
+        - Always use the appropriate tool to fetch accurate, up-to-date product information
+        - Be friendly, professional, and helpful in your responses
+        - When customers ask about products, use ProductSearch first to find relevant items
+        - For specific product questions (ingredients, calories, etc.), use ProductDetails with the product ID
+        - When customers ask "is it available", use ProductAvailability to check stock status
+        - When customers want to compare products, use ProductComparison with multiple product IDs
+        - If a customer refers to "the other one" or "these", check the conversation context for product IDs
+        - Always verify information using tools rather than making assumptions
+        - Format prices clearly in the local currency (Colombian pesos)
+        - Highlight dietary information (vegetarian, vegan) and allergens when relevant
+        - If a product is out of stock, suggest similar alternatives
+
+        Response style:
+        - Be concise but informative
+        - Use emojis sparingly for visual appeal (🍕 for pizza, 🥤 for drinks, etc.)
+        - Structure longer responses with bullet points or short paragraphs
+        - Always end with a helpful follow-up question or suggestion
+      INSTRUCTIONS
     end
   end
 end
