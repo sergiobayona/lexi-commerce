@@ -8,7 +8,8 @@ module Tools
       description "Compare multiple products side-by-side. Shows differences in price, features, ingredients, and other attributes."
 
       param :product_ids, type: :array, required: true,
-            desc: "Array of product IDs to compare (2-4 products recommended)"
+            desc: "Array of product IDs to compare (2-4 products recommended)",
+            items: { type: :string }
 
       def initialize
         # Hard-coded product data for MVP (same as ProductDetails)
