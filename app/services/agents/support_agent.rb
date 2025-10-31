@@ -32,6 +32,9 @@ module Agents
       full_question = context.empty? ? question : "#{context}\n\nUser question: #{question}"
       response = @chat.ask(full_question)
 
+      # Extract text content from RubyLLM::Message object
+      response_text = response.content.to_s
+
       # Build state patch
       state_patch = {
         "support" => {
@@ -43,14 +46,14 @@ module Agents
       }
 
       # Check if we should trigger human handoff based on conversation patterns
-      if should_trigger_handoff?(state, response)
+      if should_trigger_handoff?(state, response_text)
         Rails.logger.info "[SupportAgent] Triggering human handoff based on conversation analysis"
         # Don't modify state_patch here - let CaseManager handle it via tools
       end
 
       # Return structured AgentResponse
       respond(
-        messages: text_message(response),
+        messages: text_message(response_text),
         state_patch: state_patch
       )
     rescue StandardError => e

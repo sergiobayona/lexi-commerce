@@ -32,6 +32,9 @@ module Agents
       full_question = context.empty? ? question : "#{context}\n\nUser question: #{question}"
       response = @chat.ask(full_question)
 
+      # Extract text content from RubyLLM::Message object
+      response_text = response.content.to_s
+
       # Extract state patches from tool responses if present
       # Tools return state_patch in their responses, we need to merge them
       state_patch = extract_state_patches_from_response(response)
@@ -48,7 +51,7 @@ module Agents
 
       # Return structured AgentResponse
       respond(
-        messages: text_message(response),
+        messages: text_message(response_text),
         state_patch: state_patch
       )
     rescue StandardError => e

@@ -50,8 +50,9 @@ module Agents
     def ask(question)
       Rails.logger.info "[InfoAgent] Processing question: #{question}"
       response = @chat.ask(question)
-      Rails.logger.info "[InfoAgent] Response: #{response}"
-      response
+      Rails.logger.info "[InfoAgent] Response: #{response.content}"
+      # Extract text content from RubyLLM::Message object
+      response.content.to_s
     rescue StandardError => e
       Rails.logger.error "[InfoAgent] Error processing question: #{e.message}"
       Rails.logger.error e.backtrace.join("\n")

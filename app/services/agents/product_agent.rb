@@ -35,12 +35,15 @@ module Agents
       full_question = context.empty? ? question : "#{context}\n\nUser question: #{question}"
       response = @chat.ask(full_question)
 
+      # Extract text content from RubyLLM::Message object
+      response_text = response.content.to_s
+
       # Extract product IDs mentioned in conversation for context tracking
-      product_ids = extract_product_ids(response)
+      product_ids = extract_product_ids(response_text)
 
       # Return structured AgentResponse
       respond(
-        messages: text_message(response),
+        messages: text_message(response_text),
         state_patch: {
           "slots" => {
             "product_focus" => product_ids,
