@@ -22,7 +22,7 @@ module Whatsapp
       def process_system_errors
         Array(@value["errors"]).each do |error_data|
           create_error_record(
-            error_type: 'system',
+            error_type: "system",
             error_data: error_data,
             provider_message_id: nil,
             wa_message_id: nil
@@ -37,7 +37,7 @@ module Whatsapp
 
         Array(message_data["errors"]).each do |error_data|
           create_error_record(
-            error_type: 'message',
+            error_type: "message",
             error_data: error_data,
             provider_message_id: message_data["id"],
             wa_message_id: message_record&.id
@@ -54,7 +54,7 @@ module Whatsapp
           wa_message = WaMessage.find_by(provider_message_id: status_data["id"])
 
           create_error_record(
-            error_type: 'status',
+            error_type: "status",
             error_data: error_data,
             provider_message_id: status_data["id"],
             wa_message_id: wa_message&.id
@@ -89,11 +89,11 @@ module Whatsapp
 
         case code
         when 0..99        # Informational
-          'info'
+          "info"
         when 100..199     # Warnings
-          'warning'
+          "warning"
         else              # Errors
-          'error'
+          "error"
         end
       end
 
@@ -110,9 +110,9 @@ module Whatsapp
         }
 
         case error.error_level
-        when 'error'
+        when "error"
           Rails.logger.error(log_data.to_json)
-        when 'warning'
+        when "warning"
           Rails.logger.warn(log_data.to_json)
         else
           Rails.logger.info(log_data.to_json)

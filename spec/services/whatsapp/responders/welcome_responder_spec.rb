@@ -8,7 +8,7 @@ RSpec.describe Whatsapp::Responders::WelcomeResponder do
     it "sends Spanish welcome when Spanish greeting" do
       responder = described_class.new(contact: contact, business_number: business_number)
 
-      api_res = { "messages" => [{ "id" => "wamid.out.1" }] }
+      api_res = { "messages" => [ { "id" => "wamid.out.1" } ] }
       expect(responder).to receive(:send_text!).with(hash_including(to: contact.wa_id, business_number: business_number)).and_return(api_res)
 
       result = responder.call(greeting_text: "hola")
@@ -21,7 +21,7 @@ RSpec.describe Whatsapp::Responders::WelcomeResponder do
     it "sends English welcome when non-Spanish greeting" do
       responder = described_class.new(contact: contact, business_number: business_number)
 
-      api_res = { "messages" => [{ "id" => "wamid.out.2" }] }
+      api_res = { "messages" => [ { "id" => "wamid.out.2" } ] }
       expect(responder).to receive(:send_text!).with(hash_including(to: contact.wa_id, business_number: business_number)).and_return(api_res)
 
       result = responder.call(greeting_text: "hello")

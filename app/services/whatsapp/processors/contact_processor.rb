@@ -11,7 +11,7 @@ module Whatsapp
         # Build body text from contact names for searchability
         body_text = contacts_data.map do |contact_card|
           contact_card.dig("name", "formatted_name") ||
-          [contact_card.dig("name", "first_name"), contact_card.dig("name", "last_name")].compact.join(" ")
+          [ contact_card.dig("name", "first_name"), contact_card.dig("name", "last_name") ].compact.join(" ")
         end.compact.join(", ")
 
         msg_rec = upsert_message!(

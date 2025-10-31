@@ -65,7 +65,7 @@ module Tools
         else
           {
             error: "Invalid contact_type '#{contact_type}'",
-            available_types: ["phone", "email", "whatsapp", "all"]
+            available_types: [ "phone", "email", "whatsapp", "all" ]
           }
         end
       rescue StandardError => e
@@ -130,9 +130,9 @@ module Tools
         # Recommend best method based on urgency
         recommended = if urgency == "urgent"
                         "phone"
-                      else
+        else
                         "whatsapp"
-                      end
+        end
 
         {
           contact_type: "all",

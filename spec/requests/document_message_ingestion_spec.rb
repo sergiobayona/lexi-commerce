@@ -102,7 +102,7 @@ RSpec.describe "Document Message Ingestion", type: :request do
         # Mock media download to prevent actual API calls
         allow(Media::Downloader).to receive(:call).and_return("/tmp/receipt.pdf")
 
-        perform_enqueued_jobs(only: [Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob]) do
+        perform_enqueued_jobs(only: [ Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob ]) do
           post "/ingest",
                params: document_message_payload.to_json,
                headers: { "Content-Type" => "application/json" }
@@ -189,7 +189,7 @@ RSpec.describe "Document Message Ingestion", type: :request do
       it "creates message with nil body_text when caption is missing" do
         allow(Media::Downloader).to receive(:call).and_return("/tmp/receipt.pdf")
 
-        perform_enqueued_jobs(only: [Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob]) do
+        perform_enqueued_jobs(only: [ Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob ]) do
           post "/ingest",
                params: document_no_caption_payload.to_json,
                headers: { "Content-Type" => "application/json" }
@@ -205,7 +205,7 @@ RSpec.describe "Document Message Ingestion", type: :request do
         allow(Media::Downloader).to receive(:call).and_return("/tmp/receipt.pdf")
 
         # First delivery
-        perform_enqueued_jobs(only: [Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob]) do
+        perform_enqueued_jobs(only: [ Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob ]) do
           post "/ingest",
                params: document_message_payload.to_json,
                headers: { "Content-Type" => "application/json" }
@@ -217,7 +217,7 @@ RSpec.describe "Document Message Ingestion", type: :request do
         first_media_id = WaMedia.last.id
 
         # Second delivery (duplicate)
-        perform_enqueued_jobs(only: [Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob]) do
+        perform_enqueued_jobs(only: [ Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob ]) do
           post "/ingest",
                params: document_message_payload.to_json,
                headers: { "Content-Type" => "application/json" }

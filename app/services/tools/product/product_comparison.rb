@@ -22,8 +22,8 @@ module Tools
             price_cents: 12000,
             size: "30cm",
             calories: "250/porción",
-            dietary: ["vegetarian"],
-            allergens: ["gluten", "lácteos"],
+            dietary: [ "vegetarian" ],
+            allergens: [ "gluten", "lácteos" ],
             prep_time: "15-20 min"
           },
           "prod_002" => {
@@ -34,7 +34,7 @@ module Tools
             size: "30cm",
             calories: "310/porción",
             dietary: [],
-            allergens: ["gluten", "lácteos", "cerdo"],
+            allergens: [ "gluten", "lácteos", "cerdo" ],
             prep_time: "15-20 min"
           },
           "prod_003" => {
@@ -44,7 +44,7 @@ module Tools
             price_cents: 3000,
             size: "500ml",
             calories: "210 total",
-            dietary: ["vegan"],
+            dietary: [ "vegan" ],
             allergens: [],
             prep_time: "Inmediato"
           },
@@ -55,8 +55,8 @@ module Tools
             price_cents: 8000,
             size: "Individual",
             calories: "450",
-            dietary: ["vegetarian"],
-            allergens: ["gluten", "huevos", "lácteos"],
+            dietary: [ "vegetarian" ],
+            allergens: [ "gluten", "huevos", "lácteos" ],
             prep_time: "Inmediato"
           },
           "prod_005" => {
@@ -66,8 +66,8 @@ module Tools
             price_cents: 13000,
             size: "30cm",
             calories: "220/porción",
-            dietary: ["vegetarian"],
-            allergens: ["gluten", "lácteos"],
+            dietary: [ "vegetarian" ],
+            allergens: [ "gluten", "lácteos" ],
             prep_time: "15-20 min"
           }
         }

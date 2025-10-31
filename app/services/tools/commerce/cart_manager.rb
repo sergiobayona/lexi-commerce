@@ -124,9 +124,9 @@ module Tools
 
         message = if quantity.zero?
                     "🗑️ #{item['name']} eliminado del carrito"
-                  else
+        else
                     "✏️ Cantidad actualizada: #{item['name']} x#{quantity}"
-                  end
+        end
 
         {
           action: "update_quantity",

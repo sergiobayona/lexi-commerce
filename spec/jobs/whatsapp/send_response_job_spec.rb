@@ -23,7 +23,7 @@ RSpec.describe Whatsapp::SendResponseJob, type: :job do
     context "when sending text messages" do
       it "sends messages via WhatsApp API" do
         allow_any_instance_of(described_class).to receive(:send_text!).and_return(
-          { "messages" => [{ "id" => "wamid.test123" }] }
+          { "messages" => [ { "id" => "wamid.test123" } ] }
         )
 
         expect_any_instance_of(described_class).to receive(:send_text!).with(
@@ -38,7 +38,7 @@ RSpec.describe Whatsapp::SendResponseJob, type: :job do
 
       it "records outbound messages" do
         allow_any_instance_of(described_class).to receive(:send_text!).and_return(
-          { "messages" => [{ "id" => "wamid.test123" }] }
+          { "messages" => [ { "id" => "wamid.test123" } ] }
         )
 
         expect {
@@ -84,7 +84,7 @@ RSpec.describe Whatsapp::SendResponseJob, type: :job do
         call_count = 0
         allow_any_instance_of(described_class).to receive(:send_text!) do
           call_count += 1
-          { "messages" => [{ "id" => "wamid.test#{call_count}" }] }
+          { "messages" => [ { "id" => "wamid.test#{call_count}" } ] }
         end
 
         expect_any_instance_of(described_class).to receive(:send_text!).twice
@@ -93,7 +93,7 @@ RSpec.describe Whatsapp::SendResponseJob, type: :job do
 
         # Verify unique message IDs were created
         outbound_messages = WaMessage.where(direction: "outbound").order(:id)
-        expect(outbound_messages.pluck(:provider_message_id)).to match_array(["wamid.test1", "wamid.test2"])
+        expect(outbound_messages.pluck(:provider_message_id)).to match_array([ "wamid.test1", "wamid.test2" ])
       end
     end
   end

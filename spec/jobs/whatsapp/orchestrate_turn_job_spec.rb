@@ -218,7 +218,7 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
         allow(llm_message).to receive(:is_a?).with(RubyLLM::Message).and_return(true)
         allow(llm_message).to receive(:content).and_return(double(to_s: "Response from LLM"))
 
-        messages = [llm_message]
+        messages = [ llm_message ]
 
         result = job.send(:serialize_messages, messages)
 
@@ -282,7 +282,7 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
 
     context "with primitive types" do
       it "returns strings as-is" do
-        messages = ["Plain string message"]
+        messages = [ "Plain string message" ]
 
         result = job.send(:serialize_messages, messages)
 
@@ -292,14 +292,14 @@ RSpec.describe Whatsapp::OrchestrateTurnJob, type: :job do
 
       it "handles arrays within message structures" do
         messages = [
-          { type: "text", options: ["Option 1", "Option 2", "Option 3"] }
+          { type: "text", options: [ "Option 1", "Option 2", "Option 3" ] }
         ]
 
         result = job.send(:serialize_messages, messages)
 
         expect(result.size).to eq(1)
         expect(result.first["type"]).to eq("text")
-        expect(result.first["options"]).to eq(["Option 1", "Option 2", "Option 3"])
+        expect(result.first["options"]).to eq([ "Option 1", "Option 2", "Option 3" ])
       end
     end
   end

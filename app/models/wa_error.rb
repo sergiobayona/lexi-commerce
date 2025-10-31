@@ -5,15 +5,15 @@ class WaError < ApplicationRecord
 
   # Enums
   enum :error_type, {
-    system: 'system',       # System/app/account-level errors (entry.changes.value.errors)
-    message: 'message',     # Incoming message errors (entry.changes.value.messages.errors)
-    status: 'status'        # Outgoing message status errors (entry.changes.value.statuses.errors)
+    system: "system",       # System/app/account-level errors (entry.changes.value.errors)
+    message: "message",     # Incoming message errors (entry.changes.value.messages.errors)
+    status: "status"        # Outgoing message status errors (entry.changes.value.statuses.errors)
   }, validate: true
 
   enum :error_level, {
-    error: 'error',
-    warning: 'warning',
-    info: 'info'
+    error: "error",
+    warning: "warning",
+    info: "info"
   }, validate: true
 
   # Validations
@@ -27,7 +27,7 @@ class WaError < ApplicationRecord
   scope :recent, -> { order(created_at: :desc) }
   scope :by_type, ->(type) { where(error_type: type) }
   scope :by_level, ->(level) { where(error_level: level) }
-  scope :critical, -> { where(error_level: 'error') }
+  scope :critical, -> { where(error_level: "error") }
 
   # Instance methods
   def resolve!(notes = nil)
@@ -39,6 +39,6 @@ class WaError < ApplicationRecord
   end
 
   def error_summary
-    [error_code, error_title, error_message].compact.join(' - ')
+    [ error_code, error_title, error_message ].compact.join(" - ")
   end
 end

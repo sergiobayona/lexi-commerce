@@ -44,12 +44,12 @@ RSpec.describe State::Controller do
   describe "#handle_turn" do
     context "with first message (new session)" do
       let(:route_decision) do
-        RouterDecision.new("info", "general_info", 0.9, ["new_user"])
+        RouterDecision.new("info", "general_info", 0.9, [ "new_user" ])
       end
 
       let(:agent_response) do
         Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Hello!" } }],
+          messages: [ { type: "text", text: { body: "Hello!" } } ],
           state_patch: { "greeted" => true },
           baton: nil
         )
@@ -210,7 +210,7 @@ RSpec.describe State::Controller do
         # Bug #3 Fix: Webhook retries after success should return duplicate_turn
         route_decision = RouterDecision.new("info", "general_info", 0.9, [])
         agent_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Success" } }],
+          messages: [ { type: "text", text: { body: "Success" } } ],
           state_patch: {},
           baton: nil
         )
@@ -295,12 +295,12 @@ RSpec.describe State::Controller do
       end
 
       let(:route_decision) do
-        RouterDecision.new("commerce", "view_cart", 0.85, ["commerce_intent"])
+        RouterDecision.new("commerce", "view_cart", 0.85, [ "commerce_intent" ])
       end
 
       let(:agent_response) do
         Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Your cart is empty" } }],
+          messages: [ { type: "text", text: { body: "Your cart is empty" } } ],
           state_patch: { "last_view" => Time.now.utc.iso8601 },
           baton: nil
         )
@@ -345,12 +345,12 @@ RSpec.describe State::Controller do
 
     context "with lane handoff" do
       let(:route_decision) do
-        RouterDecision.new("info", "start_shopping", 0.9, ["wants_to_shop"])
+        RouterDecision.new("info", "start_shopping", 0.9, [ "wants_to_shop" ])
       end
 
       let(:info_response) do
         Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Switching to commerce..." } }],
+          messages: [ { type: "text", text: { body: "Switching to commerce..." } } ],
           state_patch: {},
           baton: Agents::BaseAgent::Baton.new("commerce", {
             carry_state: {
@@ -363,7 +363,7 @@ RSpec.describe State::Controller do
 
       let(:commerce_response) do
         Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Your cart is empty" } }],
+          messages: [ { type: "text", text: { body: "Your cart is empty" } } ],
           state_patch: { "handled_by" => "commerce" },
           baton: nil
         )
@@ -424,21 +424,21 @@ RSpec.describe State::Controller do
 
         # Info agent hands off to commerce
         multi_info_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Checking your order..." } }],
+          messages: [ { type: "text", text: { body: "Checking your order..." } } ],
           state_patch: {},
           baton: Agents::BaseAgent::Baton.new("commerce", { context: "order" })
         )
 
         # Commerce agent hands off to support
         multi_commerce_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Found an issue..." } }],
+          messages: [ { type: "text", text: { body: "Found an issue..." } } ],
           state_patch: {},
           baton: Agents::BaseAgent::Baton.new("support", { issue: "refund" })
         )
 
         # Support agent completes (no baton)
         support_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "I'll process your refund" } }],
+          messages: [ { type: "text", text: { body: "I'll process your refund" } } ],
           state_patch: {},
           baton: nil
         )
@@ -476,7 +476,7 @@ RSpec.describe State::Controller do
 
         # Agent tries to hand off to its own lane
         info_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Processing..." } }],
+          messages: [ { type: "text", text: { body: "Processing..." } } ],
           state_patch: {},
           baton: Agents::BaseAgent::Baton.new("info", { intent: "continue" })  # Same lane!
         )
@@ -509,13 +509,13 @@ RSpec.describe State::Controller do
         route_decision = RouterDecision.new("info", "start_shopping", 0.9, [])
 
         info_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Switching..." } }],
+          messages: [ { type: "text", text: { body: "Switching..." } } ],
           state_patch: {},
           baton: Agents::BaseAgent::Baton.new("commerce", { intent: "browse" })  # Different lane ✅
         )
 
         commerce_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Welcome to shop" } }],
+          messages: [ { type: "text", text: { body: "Welcome to shop" } } ],
           state_patch: {},
           baton: nil
         )
@@ -541,7 +541,7 @@ RSpec.describe State::Controller do
 
         # Agent returns same-lane baton (would normally loop MAX_BATON_HOPS times)
         info_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Looping..." } }],
+          messages: [ { type: "text", text: { body: "Looping..." } } ],
           state_patch: {},
           baton: Agents::BaseAgent::Baton.new("info", {})  # Same lane
         )
@@ -573,7 +573,7 @@ RSpec.describe State::Controller do
 
         # Agent returns same-lane baton with payload
         info_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Response" } }],
+          messages: [ { type: "text", text: { body: "Response" } } ],
           state_patch: { "valid_field" => "should_be_applied" },
           baton: Agents::BaseAgent::Baton.new("info", {
             carry_state: {
@@ -604,7 +604,7 @@ RSpec.describe State::Controller do
 
         # Agent returns baton to non-existent lane
         info_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Response" } }],
+          messages: [ { type: "text", text: { body: "Response" } } ],
           state_patch: { "agent_work" => "completed" },
           baton: Agents::BaseAgent::Baton.new("nonexistent_lane", {
             carry_state: {
@@ -645,21 +645,21 @@ RSpec.describe State::Controller do
 
         # Hop 0: info -> commerce
         info_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Step 1" } }],
+          messages: [ { type: "text", text: { body: "Step 1" } } ],
           state_patch: { "hop_0" => "done" },
           baton: Agents::BaseAgent::Baton.new("commerce", { carry_state: { "hop_0_data" => "ok" } })
         )
 
         # Hop 1: commerce -> support
         commerce_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Step 2" } }],
+          messages: [ { type: "text", text: { body: "Step 2" } } ],
           state_patch: { "hop_1" => "done" },
           baton: Agents::BaseAgent::Baton.new("support", { carry_state: { "hop_1_data" => "ok" } })
         )
 
         # Hop 2: support -> fulfillment (should be REJECTED - exceeds MAX_BATON_HOPS=2)
         support_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Step 3" } }],
+          messages: [ { type: "text", text: { body: "Step 3" } } ],
           state_patch: { "hop_2" => "done" },
           baton: Agents::BaseAgent::Baton.new("fulfillment", {
             carry_state: {
@@ -701,7 +701,7 @@ RSpec.describe State::Controller do
       it "saves agent response to dialogue history" do
         route_decision = RouterDecision.new("info", "business_hours", 0.95, [])
         agent_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "We're open 9am-5pm" } }],
+          messages: [ { type: "text", text: { body: "We're open 9am-5pm" } } ],
           state_patch: {},
           baton: nil
         )
@@ -736,13 +736,13 @@ RSpec.describe State::Controller do
         route_decision = RouterDecision.new("info", "view_cart", 0.9, [])
 
         info_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Let me check..." } }],
+          messages: [ { type: "text", text: { body: "Let me check..." } } ],
           state_patch: {},
           baton: Agents::BaseAgent::Baton.new("commerce", {})
         )
 
         commerce_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Your cart is empty" } }],
+          messages: [ { type: "text", text: { body: "Your cart is empty" } } ],
           state_patch: {},
           baton: nil
         )
@@ -786,7 +786,7 @@ RSpec.describe State::Controller do
 
         route_decision1 = RouterDecision.new("info", "business_hours", 0.95, [])
         agent_response1 = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "We're open 9am-5pm" } }],
+          messages: [ { type: "text", text: { body: "We're open 9am-5pm" } } ],
           state_patch: {},
           baton: nil
         )
@@ -805,7 +805,7 @@ RSpec.describe State::Controller do
 
         route_decision2 = RouterDecision.new("info", "business_hours", 0.95, [])
         agent_response2 = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Closed on weekends" } }],
+          messages: [ { type: "text", text: { body: "Closed on weekends" } } ],
           state_patch: {},
           baton: nil
         )
@@ -839,9 +839,9 @@ RSpec.describe State::Controller do
       # Bug #9 Fix: Initial router decision should be preserved on baton handoffs
 
       it "preserves initial routing decision when no baton handoff occurs" do
-        route_decision = RouterDecision.new("info", "business_hours", 0.95, ["keyword_match"])
+        route_decision = RouterDecision.new("info", "business_hours", 0.95, [ "keyword_match" ])
         agent_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "We're open 9am-5pm" } }],
+          messages: [ { type: "text", text: { body: "We're open 9am-5pm" } } ],
           state_patch: {},
           baton: nil
         )
@@ -860,18 +860,18 @@ RSpec.describe State::Controller do
 
       it "preserves initial routing decision on single baton handoff" do
         # Router classifies as "info" with intent "return_policy"
-        route_decision = RouterDecision.new("info", "return_policy", 0.95, ["policy_keywords"])
+        route_decision = RouterDecision.new("info", "return_policy", 0.95, [ "policy_keywords" ])
 
         # Info agent hands off to commerce
         info_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Let me get the details..." } }],
+          messages: [ { type: "text", text: { body: "Let me get the details..." } } ],
           state_patch: {},
           baton: Agents::BaseAgent::Baton.new("commerce", { context: "policy" })
         )
 
         # Commerce agent completes
         commerce_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "30-day return policy" } }],
+          messages: [ { type: "text", text: { body: "30-day return policy" } } ],
           state_patch: {},
           baton: nil
         )
@@ -894,25 +894,25 @@ RSpec.describe State::Controller do
 
       it "preserves initial routing decision through multi-hop baton chain" do
         # Router initially classifies as "info"
-        route_decision = RouterDecision.new("info", "order_status", 0.92, ["order_inquiry"])
+        route_decision = RouterDecision.new("info", "order_status", 0.92, [ "order_inquiry" ])
 
         # Setup 3-agent chain: info -> commerce -> support
         support_agent = instance_double(Agents::BaseAgent)
 
         info_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Checking order..." } }],
+          messages: [ { type: "text", text: { body: "Checking order..." } } ],
           state_patch: {},
           baton: Agents::BaseAgent::Baton.new("commerce", {})
         )
 
         commerce_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Found issue..." } }],
+          messages: [ { type: "text", text: { body: "Found issue..." } } ],
           state_patch: {},
           baton: Agents::BaseAgent::Baton.new("support", {})
         )
 
         support_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "I'll help resolve this" } }],
+          messages: [ { type: "text", text: { body: "I'll help resolve this" } } ],
           state_patch: {},
           baton: nil
         )
@@ -1115,7 +1115,7 @@ RSpec.describe State::Controller do
         # Bug #5 Fix: After error is fixed, retry should not duplicate dialogue
         route_decision = RouterDecision.new("info", "general_info", 0.9, [])
         agent_response = Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Success" } }],
+          messages: [ { type: "text", text: { body: "Success" } } ],
           state_patch: {},
           baton: nil
         )
@@ -1149,13 +1149,13 @@ RSpec.describe State::Controller do
 
     context "logging" do
       let(:route_decision) do
-        RouterDecision.new("commerce", "add_to_cart", 0.92, ["user_intent", "high_confidence"])
+        RouterDecision.new("commerce", "add_to_cart", 0.92, [ "user_intent", "high_confidence" ])
       end
 
       let(:agent_response) do
         Agents::BaseAgent::AgentResponse.new(
-          messages: [{ type: "text", text: { body: "Added to cart" } }],
-          state_patch: { "cart_items" => [1] },
+          messages: [ { type: "text", text: { body: "Added to cart" } } ],
+          state_patch: { "cart_items" => [ 1 ] },
           baton: nil
         )
       end
@@ -1212,7 +1212,7 @@ RSpec.describe State::Controller do
 
       route_decision = RouterDecision.new("info", "general_info", 0.9, [])
       agent_response = Agents::BaseAgent::AgentResponse.new(
-        messages: [{ type: "text", text: { body: "Hi" } }],
+        messages: [ { type: "text", text: { body: "Hi" } } ],
         state_patch: {},
         baton: nil
       )
@@ -1247,7 +1247,7 @@ RSpec.describe State::Controller do
 
       route_decision = RouterDecision.new("info", "general_info", 0.9, [])
       agent_response = Agents::BaseAgent::AgentResponse.new(
-        messages: [{ type: "text", text: { body: "Response" } }],
+        messages: [ { type: "text", text: { body: "Response" } } ],
         state_patch: { "message_count" => 1 },
         baton: nil
       )

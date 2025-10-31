@@ -20,16 +20,16 @@ module Tools
             category: "food",
             price_cents: 12000,
             description: "Pizza clásica italiana con salsa de tomate fresco, mozzarella de búfala y albahaca fresca. Horneada en horno de piedra a 450°C.",
-            ingredients: ["Masa artesanal", "Tomate San Marzano", "Mozzarella di Bufala", "Albahaca fresca", "Aceite de oliva extra virgen"],
+            ingredients: [ "Masa artesanal", "Tomate San Marzano", "Mozzarella di Bufala", "Albahaca fresca", "Aceite de oliva extra virgen" ],
             size: "30cm (mediana)",
             servings: "2-3 personas",
             prep_time: "15-20 minutos",
             calories: "250 por porción",
-            dietary: ["vegetarian"],
-            allergens: ["gluten", "lácteos"],
+            dietary: [ "vegetarian" ],
+            allergens: [ "gluten", "lácteos" ],
             available: true,
             stock_status: "En stock",
-            images: ["https://example.com/margherita.jpg"]
+            images: [ "https://example.com/margherita.jpg" ]
           },
           "prod_002" => {
             id: "prod_002",
@@ -37,16 +37,16 @@ module Tools
             category: "food",
             price_cents: 14000,
             description: "Pizza americana con abundante pepperoni premium y queso mozzarella. Nuestra opción más popular.",
-            ingredients: ["Masa artesanal", "Salsa de tomate", "Mozzarella", "Pepperoni premium"],
+            ingredients: [ "Masa artesanal", "Salsa de tomate", "Mozzarella", "Pepperoni premium" ],
             size: "30cm (mediana)",
             servings: "2-3 personas",
             prep_time: "15-20 minutos",
             calories: "310 por porción",
             dietary: [],
-            allergens: ["gluten", "lácteos", "cerdo"],
+            allergens: [ "gluten", "lácteos", "cerdo" ],
             available: true,
             stock_status: "En stock",
-            images: ["https://example.com/pepperoni.jpg"]
+            images: [ "https://example.com/pepperoni.jpg" ]
           },
           "prod_003" => {
             id: "prod_003",
@@ -54,15 +54,15 @@ module Tools
             category: "drinks",
             price_cents: 3000,
             description: "Bebida gaseosa refrescante de 500ml. Servida fría.",
-            ingredients: ["Agua carbonatada", "Azúcar", "Caramelo", "Ácido fosfórico", "Cafeína"],
+            ingredients: [ "Agua carbonatada", "Azúcar", "Caramelo", "Ácido fosfórico", "Cafeína" ],
             size: "500ml",
             servings: "1 persona",
             calories: "210 total",
-            dietary: ["vegan"],
+            dietary: [ "vegan" ],
             allergens: [],
             available: true,
             stock_status: "En stock",
-            images: ["https://example.com/coca-cola.jpg"]
+            images: [ "https://example.com/coca-cola.jpg" ]
           },
           "prod_004" => {
             id: "prod_004",
@@ -70,16 +70,16 @@ module Tools
             category: "desserts",
             price_cents: 8000,
             description: "Postre italiano tradicional con capas de bizcochos empapados en café espresso, crema de mascarpone y cacao en polvo.",
-            ingredients: ["Bizcochos savoiardi", "Café espresso", "Mascarpone", "Huevos", "Azúcar", "Cacao"],
+            ingredients: [ "Bizcochos savoiardi", "Café espresso", "Mascarpone", "Huevos", "Azúcar", "Cacao" ],
             size: "Porción individual",
             servings: "1 persona",
             prep_time: "Listo para servir",
             calories: "450",
-            dietary: ["vegetarian"],
-            allergens: ["gluten", "huevos", "lácteos"],
+            dietary: [ "vegetarian" ],
+            allergens: [ "gluten", "huevos", "lácteos" ],
             available: true,
             stock_status: "En stock",
-            images: ["https://example.com/tiramisu.jpg"]
+            images: [ "https://example.com/tiramisu.jpg" ]
           },
           "prod_005" => {
             id: "prod_005",
@@ -87,16 +87,16 @@ module Tools
             category: "food",
             price_cents: 13000,
             description: "Pizza saludable con variedad de vegetales frescos: pimientos rojos y verdes, champiñones, cebolla morada y aceitunas negras.",
-            ingredients: ["Masa artesanal", "Salsa de tomate", "Mozzarella", "Pimientos", "Champiñones", "Cebolla", "Aceitunas"],
+            ingredients: [ "Masa artesanal", "Salsa de tomate", "Mozzarella", "Pimientos", "Champiñones", "Cebolla", "Aceitunas" ],
             size: "30cm (mediana)",
             servings: "2-3 personas",
             prep_time: "15-20 minutos",
             calories: "220 por porción",
-            dietary: ["vegetarian"],
-            allergens: ["gluten", "lácteos"],
+            dietary: [ "vegetarian" ],
+            allergens: [ "gluten", "lácteos" ],
             available: true,
             stock_status: "En stock",
-            images: ["https://example.com/vegetariana.jpg"]
+            images: [ "https://example.com/vegetariana.jpg" ]
           }
         }
       end

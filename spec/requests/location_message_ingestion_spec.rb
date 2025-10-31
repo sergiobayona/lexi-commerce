@@ -96,7 +96,7 @@ RSpec.describe "Location Message Ingestion", type: :request do
 
     context "database record creation" do
       before do
-        perform_enqueued_jobs(only: [Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob]) do
+        perform_enqueued_jobs(only: [ Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob ]) do
           post "/ingest",
                params: location_message_payload.to_json,
                headers: { "Content-Type" => "application/json" }
@@ -169,7 +169,7 @@ RSpec.describe "Location Message Ingestion", type: :request do
       end
 
       it "creates message with nil body_text when name and address are missing" do
-        perform_enqueued_jobs(only: [Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob]) do
+        perform_enqueued_jobs(only: [ Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob ]) do
           post "/ingest",
                params: coordinates_only_payload.to_json,
                headers: { "Content-Type" => "application/json" }
@@ -194,7 +194,7 @@ RSpec.describe "Location Message Ingestion", type: :request do
       end
 
       it "creates searchable body_text from name only" do
-        perform_enqueued_jobs(only: [Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob]) do
+        perform_enqueued_jobs(only: [ Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob ]) do
           post "/ingest",
                params: name_only_payload.to_json,
                headers: { "Content-Type" => "application/json" }
@@ -208,7 +208,7 @@ RSpec.describe "Location Message Ingestion", type: :request do
     context "idempotency" do
       it "handles duplicate webhook deliveries" do
         # First delivery
-        perform_enqueued_jobs(only: [Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob]) do
+        perform_enqueued_jobs(only: [ Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob ]) do
           post "/ingest",
                params: location_message_payload.to_json,
                headers: { "Content-Type" => "application/json" }
@@ -218,7 +218,7 @@ RSpec.describe "Location Message Ingestion", type: :request do
         first_message_id = WaMessage.last.id
 
         # Second delivery (duplicate)
-        perform_enqueued_jobs(only: [Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob]) do
+        perform_enqueued_jobs(only: [ Whatsapp::IngestWebhookJob, Whatsapp::ProcessMessageJob ]) do
           post "/ingest",
                params: location_message_payload.to_json,
                headers: { "Content-Type" => "application/json" }

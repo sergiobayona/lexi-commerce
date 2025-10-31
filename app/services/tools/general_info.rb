@@ -9,7 +9,7 @@
 module Tools
   class GeneralInfo
     def self.all
-      [BusinessHours, Locations, GeneralFaq]
+      [ BusinessHours, Locations, GeneralFaq ]
     end
   end
 end

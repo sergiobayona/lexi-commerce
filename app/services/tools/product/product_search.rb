@@ -25,7 +25,7 @@ module Tools
             price_cents: 12000,
             description: "Pizza clásica con tomate, mozzarella y albahaca fresca",
             available: true,
-            tags: ["vegetarian", "popular", "italian"]
+            tags: [ "vegetarian", "popular", "italian" ]
           },
           {
             id: "prod_002",
@@ -34,7 +34,7 @@ module Tools
             price_cents: 14000,
             description: "Pizza con abundante pepperoni y queso mozzarella",
             available: true,
-            tags: ["popular", "meat", "italian"]
+            tags: [ "popular", "meat", "italian" ]
           },
           {
             id: "prod_003",
@@ -43,7 +43,7 @@ module Tools
             price_cents: 3000,
             description: "Bebida gaseosa refrescante",
             available: true,
-            tags: ["beverage", "cold"]
+            tags: [ "beverage", "cold" ]
           },
           {
             id: "prod_004",
@@ -52,7 +52,7 @@ module Tools
             price_cents: 8000,
             description: "Postre italiano con café y mascarpone",
             available: true,
-            tags: ["dessert", "coffee", "italian"]
+            tags: [ "dessert", "coffee", "italian" ]
           },
           {
             id: "prod_005",
@@ -61,7 +61,7 @@ module Tools
             price_cents: 13000,
             description: "Pizza con pimientos, champiñones, cebolla y aceitunas",
             available: true,
-            tags: ["vegetarian", "healthy"]
+            tags: [ "vegetarian", "healthy" ]
           }
         ]
       end
@@ -115,7 +115,7 @@ module Tools
 
       def suggest_alternatives(query)
         # Suggest popular items if search fails
-        ["Pizza Margherita", "Pizza Pepperoni", "Tiramisu"]
+        [ "Pizza Margherita", "Pizza Pepperoni", "Tiramisu" ]
       end
     end
   end

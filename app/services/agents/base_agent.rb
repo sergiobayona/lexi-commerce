@@ -103,7 +103,7 @@ module Agents
     # Helper to build standard response
     def respond(messages:, state_patch: {}, baton: nil)
       AgentResponse.new(
-        messages: messages.is_a?(Array) ? messages : [messages],
+        messages: messages.is_a?(Array) ? messages : [ messages ],
         state_patch: state_patch,
         baton: baton
       )

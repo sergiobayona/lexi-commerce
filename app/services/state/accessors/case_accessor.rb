@@ -86,7 +86,7 @@ module State
         }
 
         # Merge allowed updates
-        allowed_fields = ["case_status", "case_details", "escalation_level", "notes"]
+        allowed_fields = [ "case_status", "case_details", "escalation_level", "notes" ]
         updates.each do |key, value|
           if allowed_fields.include?(key.to_s)
             state_patch["support"][key.to_s] = value

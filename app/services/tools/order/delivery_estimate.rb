@@ -91,22 +91,22 @@ module Tools
         # Extract zone from address (simplified)
         zone = if address.downcase.include?("norte")
                  "Zona Norte"
-               elsif address.downcase.include?("sur")
+        elsif address.downcase.include?("sur")
                  "Zona Sur"
-               elsif address.downcase.include?("centro")
+        elsif address.downcase.include?("centro")
                  "Centro"
-               else
+        else
                  "Zona General"
-               end
+        end
 
         # Base times
         prep_time = 20 # minutes
         delivery_time = case zone
-                        when "Zona Norte" then 30
-                        when "Zona Sur" then 45
-                        when "Centro" then 35
-                        else 40
-                        end
+        when "Zona Norte" then 30
+        when "Zona Sur" then 45
+        when "Centro" then 35
+        else 40
+        end
 
         total_time = prep_time + delivery_time
         estimated_arrival = Time.now + (total_time * 60)
