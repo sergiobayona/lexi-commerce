@@ -1,18 +1,29 @@
 FactoryBot.define do
   factory :wa_message do
-    provider_message_id { "MyString" }
-    direction { "MyString" }
-    from_wa_contact { nil }
-    to_business_number { nil }
-    type_name { "MyString" }
-    body_text { "MyText" }
-    timestamp { "2025-09-16 10:35:12" }
-    status { "MyString" }
-    context_msg_id { "MyString" }
+    provider_message_id { "wamid.#{SecureRandom.hex(8)}" }
+    direction { "inbound" }
+    association :wa_contact
+    association :wa_business_number
+    type_name { "text" }
+    body_text { "Sample message" }
+    timestamp { Time.current }
+    status { "received" }
+    context_msg_id { nil }
     has_media { false }
-    media_kind { "MyString" }
-    wa_contact_snapshot { "" }
-    metadata_snapshot { "" }
-    raw { "" }
+    media_kind { nil }
+    wa_contact_snapshot { {} }
+    metadata_snapshot { {} }
+    raw { {} }
+
+    trait :with_audio do
+      type_name { "audio" }
+      has_media { true }
+      media_kind { "audio" }
+    end
+
+    trait :outbound do
+      direction { "outbound" }
+      status { "sent" }
+    end
   end
 end

@@ -28,9 +28,16 @@ RSpec.describe Whatsapp::Processors::AudioProcessor do
   let(:value) { base_value }
   let(:msg) { base_msg }
 
+  before do
+    # Mock external dependencies for all tests
+    allow(Media::Downloader).to receive(:call).and_return("/tmp/test.ogg")
+    allow(Media::AudioConverter).to receive(:to_wav).and_return("/tmp/test.wav")
+    allow(Whisper::Context).to receive(:new).and_return(double(transcribe: nil))
+  end
+
   describe "#call" do
     context "with valid audio message" do
-      it "creates message + media and enqueues Media::DownloadJob" do
+      it "creates message + media and calls Media::Downloader" do
         expect {
           described_class.new(value, msg).call
         }.to change(WaMessage, :count).by(1)
@@ -52,8 +59,8 @@ RSpec.describe Whatsapp::Processors::AudioProcessor do
         expect(media.mime_type).to eq("audio/ogg")
         expect(media.is_voice).to be true
 
-        # Verify job enqueueing
-        expect(Media::DownloadJob).to have_been_enqueued.with(media.id)
+        # Verify downloader was called
+        expect(Media::Downloader).to have_received(:call).with(media.id)
       end
 
       it "creates proper timestamps" do
@@ -173,12 +180,11 @@ RSpec.describe Whatsapp::Processors::AudioProcessor do
         }.not_to change { [ WaMessage.count, WaMedia.count, WaMessageMedia.count ] }
       end
 
-      it "enqueues download job on each call (not deduplicated)" do
+      it "calls downloader on each call (not deduplicated)" do
         described_class.new(value, msg).call
 
-        expect {
-          described_class.new(value, msg).call
-        }.to have_enqueued_job(Media::DownloadJob)
+        expect(Media::Downloader).to receive(:call)
+        described_class.new(value, msg).call
       end
 
       it "handles referral processing consistently" do

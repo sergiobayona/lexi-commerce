@@ -11,6 +11,7 @@ module Whatsapp
         )
         msg = upsert_message!(attrs)
         msg.update!(body_text: @msg.dig("text", "body"))
+        msg
       end
     end
   end

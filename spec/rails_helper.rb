@@ -36,6 +36,8 @@ rescue ActiveRecord::PendingMigrationError => e
 end
 RSpec.configure do |config|
   config.include ActiveJob::TestHelper
+  config.include FactoryBot::Syntax::Methods
+  config.include WebMock::API
 
   # Remove this line if you're not using ActiveRecord or ActiveRecord fixtures
   config.fixture_paths = [

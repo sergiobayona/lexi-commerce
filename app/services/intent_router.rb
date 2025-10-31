@@ -1,0 +1,74 @@
+# frozen_string_literal: true
+
+require_relative "router_decision"
+require_relative "schemas/router_decision_schema"
+require_relative "../../lib/agent_config"
+require_relative "../../lib/routing_config"
+require "ruby_llm"
+
+class IntentRouter
+  def initialize
+    @client = RubyLLM.chat(model: "gpt-4o-mini")
+    @now    = -> { Time.zone.now }
+  end
+
+  # turn: { text:, payload:, timestamp:, tenant_id:, wa_id:, message_id: }
+  # state: Contract-shaped session hash
+  def route(turn:, state:)
+    # Build prompt with user message and state
+    prompt = "User message: #{turn[:text]}\nState: #{compact_state_summary(state)}"
+
+    # Bug #15 Fix: Handle configuration errors from system_prompt
+    begin
+      instructions = system_prompt
+    rescue RoutingConfig::ConfigurationError => e
+      Rails.logger.error("Routing configuration error: #{e.message}")
+      return RouterDecision.new("info", "general_info", 0.1, [ "config_error: #{e.message}" ])
+    end
+
+    # Call LLM with structured schema output
+    response = @client.with_instructions(instructions).with_schema(Schemas::RouterDecisionSchema).ask(prompt)
+
+    # Parse & clamp (with_schema returns response with .content as hash)
+    result = response.content
+    lane           = result["lane"]
+    intent         = (result["intent"] || "general_info").to_s
+    confidence     = clamp(result["confidence"].to_f, 0.0, 1.0)
+    reasons        = Array(result["reasoning"]).map(&:to_s).first(5)
+
+    RouterDecision.new(lane, intent, confidence, reasons)
+  rescue StandardError => e
+    # Fail-safe: default to info, low confidence
+    Rails.logger.error("Router error: #{e.class} - #{e.message}")
+    RouterDecision.new("info", "general_info", 0.3, [ "router_error: #{e.class}" ])
+  end
+
+  private
+
+  def clamp(v, lo, hi) = [ [ v, lo ].max, hi ].min
+
+  # Provide payload as a hint, but let the LLM decide
+  def payload_hint(payload)
+    return [] unless payload
+    [ { role: "user", content: "PAYLOAD: #{payload}" } ]
+  end
+
+  # Keep the state snapshot tiny and privacy-safe
+  def compact_state_summary(state)
+    {
+      tenant_id: state["tenant_id"],
+      locale: state["locale"],
+      current_lane: state["current_lane"],
+      location_id: state["location_id"],
+      fulfillment: state["fulfillment"],
+      address_present: !state["address"].nil?,
+      commerce_state: state["commerce_state"],
+      cart_items_count: state["cart_items"]&.size || 0
+    }.to_json
+  end
+
+  def system_prompt
+    # Load system prompt from routing.yml with additional context
+    RoutingConfig.system_prompt
+  end
+end

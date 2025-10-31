@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_09_18_162606) do
+ActiveRecord::Schema[8.0].define(version: 2025_10_01_152936) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -155,6 +155,33 @@ ActiveRecord::Schema[8.0].define(version: 2025_09_18_162606) do
     t.index ["wa_id"], name: "index_wa_contacts_on_wa_id", unique: true
   end
 
+  create_table "wa_errors", force: :cascade do |t|
+    t.string "error_type", null: false
+    t.string "error_level", null: false
+    t.integer "error_code"
+    t.string "error_title"
+    t.text "error_message"
+    t.text "error_details"
+    t.string "provider_message_id"
+    t.bigint "wa_message_id"
+    t.bigint "webhook_event_id"
+    t.jsonb "raw_error_data", default: {}, null: false
+    t.boolean "resolved", default: false
+    t.text "resolution_notes"
+    t.datetime "resolved_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_wa_errors_on_created_at"
+    t.index ["error_code"], name: "index_wa_errors_on_error_code"
+    t.index ["error_level"], name: "index_wa_errors_on_error_level"
+    t.index ["error_type"], name: "index_wa_errors_on_error_type"
+    t.index ["provider_message_id"], name: "index_wa_errors_on_provider_message_id"
+    t.index ["raw_error_data"], name: "index_wa_errors_on_raw_error_data", using: :gin
+    t.index ["resolved"], name: "index_wa_errors_on_resolved"
+    t.index ["wa_message_id"], name: "index_wa_errors_on_wa_message_id"
+    t.index ["webhook_event_id"], name: "index_wa_errors_on_webhook_event_id"
+  end
+
   create_table "wa_media", force: :cascade do |t|
     t.string "provider_media_id"
     t.string "sha256"
@@ -246,6 +273,8 @@ ActiveRecord::Schema[8.0].define(version: 2025_09_18_162606) do
   add_foreign_key "solid_queue_ready_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
+  add_foreign_key "wa_errors", "wa_messages", on_delete: :nullify
+  add_foreign_key "wa_errors", "webhook_events", on_delete: :nullify
   add_foreign_key "wa_message_media", "wa_media", column: "wa_media_id"
   add_foreign_key "wa_message_media", "wa_messages"
   add_foreign_key "wa_messages", "wa_business_numbers"

@@ -19,6 +19,13 @@ gem "oj"
 gem "rspec-rails"
 gem "factory_bot_rails"
 gem "dotenv-rails", groups: %i[development test]
+gem "whispercpp"
+gem "av"
+gem "rubocop"
+gem "ruby-lsp"
+gem "ruby_llm"
+gem "ruby_llm-schema"
+gem "liquid"
 
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 # gem "bcrypt", "~> 3.1.7"
@@ -58,4 +65,11 @@ group :development, :test do
 
   # Omakase Ruby styling [https://github.com/rails/rubocop-rails-omakase/]
   gem "rubocop-rails-omakase", require: false
+  gem "pry-rails"
+end
+
+group :test do
+  # Record and replay HTTP interactions for testing
+  gem "vcr"
+  gem "webmock"
 end

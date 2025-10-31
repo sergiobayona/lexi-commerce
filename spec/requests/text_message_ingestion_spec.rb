@@ -1,0 +1,179 @@
+require 'rails_helper'
+
+RSpec.describe "Text Message Ingestion", type: :request do
+  describe "POST /ingest with text message" do
+    let(:text_message_payload) do
+      {
+        "object" => "whatsapp_business_account",
+        "entry" => [
+          {
+            "id" => "102290129340398",
+            "changes" => [
+              {
+                "value" => {
+                  "messaging_product" => "whatsapp",
+                  "metadata" => {
+                    "display_phone_number" => "15550783881",
+                    "phone_number_id" => "106540352242922"
+                  },
+                  "contacts" => [
+                    {
+                      "profile" => {
+                        "name" => "Sheena Nelson"
+                      },
+                      "wa_id" => "16505551234"
+                    }
+                  ],
+                  "messages" => [
+                    {
+                      "from" => "16505551234",
+                      "id" => "wamid.HBgLMTY1MDM4Nzk0MzkVAgASGBQzQTRBNjU5OUFFRTAzODEwMTQ0RgA=",
+                      "timestamp" => "1749416383",
+                      "type" => "text",
+                      "text" => {
+                        "body" => "Does it come in another color?"
+                      }
+                    }
+                  ]
+                },
+                "field" => "messages"
+              }
+            ]
+          }
+        ]
+      }
+    end
+
+    context "webhook reception" do
+      it "returns 200 OK and creates WebhookEvent" do
+        expect {
+          post "/ingest",
+               params: text_message_payload.to_json,
+               headers: { "Content-Type" => "application/json" }
+        }.to change { WebhookEvent.count }.by(1)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body).to be_empty
+
+        webhook_event = WebhookEvent.last
+        expect(webhook_event.provider).to eq("whatsapp")
+        expect(webhook_event.object_name).to eq("whatsapp_business_account")
+        expect(webhook_event.payload).to eq(text_message_payload)
+      end
+
+      it "enqueues IngestWebhookJob with webhook_event_id" do
+        expect {
+          post "/ingest",
+               params: text_message_payload.to_json,
+               headers: { "Content-Type" => "application/json" }
+        }.to have_enqueued_job(Whatsapp::IngestWebhookJob)
+
+        expect(Whatsapp::IngestWebhookJob).to have_been_enqueued
+      end
+    end
+
+    context "job processing" do
+      it "enqueues ProcessMessageJob for the text message" do
+        post "/ingest",
+             params: text_message_payload.to_json,
+             headers: { "Content-Type" => "application/json" }
+
+        perform_enqueued_jobs(only: Whatsapp::IngestWebhookJob)
+
+        expect(Whatsapp::ProcessMessageJob).to have_been_enqueued
+      end
+
+      it "routes to TextProcessor" do
+        expect_any_instance_of(Whatsapp::Processors::TextProcessor)
+          .to receive(:call).and_call_original
+
+        perform_enqueued_jobs do
+          post "/ingest",
+               params: text_message_payload.to_json,
+               headers: { "Content-Type" => "application/json" }
+        end
+      end
+    end
+
+    context "database record creation" do
+      before do
+        perform_enqueued_jobs do
+          post "/ingest",
+               params: text_message_payload.to_json,
+               headers: { "Content-Type" => "application/json" }
+        end
+      end
+
+      it "creates WaBusinessNumber record" do
+        expect(WaBusinessNumber.count).to eq(1)
+
+        business_number = WaBusinessNumber.last
+        expect(business_number.phone_number_id).to eq("106540352242922")
+        expect(business_number.display_phone_number).to eq("15550783881")
+      end
+
+      it "creates WaContact record" do
+        expect(WaContact.count).to eq(1)
+
+        contact = WaContact.last
+        expect(contact.wa_id).to eq("16505551234")
+        expect(contact.profile_name).to eq("Sheena Nelson")
+      end
+
+      it "creates WaMessage record with correct attributes" do
+        expect(WaMessage.count).to eq(1)
+
+        message = WaMessage.last
+        expect(message.provider_message_id).to eq("wamid.HBgLMTY1MDM4Nzk0MzkVAgASGBQzQTRBNjU5OUFFRTAzODEwMTQ0RgA=")
+        expect(message.direction).to eq("inbound")
+        expect(message.type_name).to eq("text")
+        expect(message.body_text).to eq("Does it come in another color?")
+        expect(message.has_media).to eq(false)
+        expect(message.media_kind).to be_nil
+        expect(message.timestamp).to eq(Time.at(1749416383).utc)
+        expect(message.status).to eq("received")
+      end
+
+      it "establishes correct relationships" do
+        message = WaMessage.last
+        contact = WaContact.last
+        business_number = WaBusinessNumber.last
+
+        expect(message.wa_contact).to eq(contact)
+        expect(message.wa_business_number).to eq(business_number)
+        expect(message.wa_contact_id).to eq(contact.id)
+        expect(message.wa_business_number_id).to eq(business_number.id)
+      end
+
+      it "does not create media records" do
+        expect(WaMedia.count).to eq(0)
+        expect(WaMessageMedia.count).to eq(0)
+      end
+    end
+
+    context "idempotency" do
+      it "handles duplicate webhook deliveries" do
+        # First delivery
+        perform_enqueued_jobs do
+          post "/ingest",
+               params: text_message_payload.to_json,
+               headers: { "Content-Type" => "application/json" }
+        end
+
+        expect(WaMessage.count).to eq(1)
+        first_message_id = WaMessage.last.id
+
+        # Second delivery (duplicate)
+        perform_enqueued_jobs do
+          post "/ingest",
+               params: text_message_payload.to_json,
+               headers: { "Content-Type" => "application/json" }
+        end
+
+        # Should still have only one message (upsert on provider_message_id)
+        expect(WaMessage.count).to eq(1)
+        expect(WaMessage.last.id).to eq(first_message_id)
+      end
+    end
+  end
+end

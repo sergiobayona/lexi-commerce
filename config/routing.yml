@@ -1,0 +1,160 @@
+version: 2
+
+# Agent definitions (lanes)
+agents:
+  info:
+    class_name: "Agents::InfoAgent"
+    description: "General business information (hours, location, menu, services, FAQs)"
+    model: "gpt-4o-mini"
+    is_default: true
+
+  product:
+    class_name: "Agents::ProductAgent"
+    description: "Product-specific questions (details, attributes, categories, availability, comparisons)"
+    model: "gpt-4o-mini"
+
+  commerce:
+    class_name: "Agents::CommerceAgent"
+    description: "Shopping and transactions (browse products, add to cart, checkout)"
+    model: "gpt-4o-mini"
+
+  order:
+    class_name: "Agents::OrderStatusAgent"
+    description: "Order tracking and shipping updates (verify identity, query OMS, delivery ETAs)"
+    model: "gpt-4o-mini"
+
+  support:
+    class_name: "Agents::SupportAgent"
+    description: "Customer service issues (refunds, complaints, order problems, account help)"
+    model: "gpt-4o-mini"
+
+# Intent definitions with agent routing
+intents:
+  business_hours:
+    agent: info
+    description: "Opening/closing times, holiday hours"
+    examples:
+      - "What time do you open on Saturdays?"
+      - "¿A qué hora cierran hoy festivo?"
+
+  pricing_quote:
+    agent: info
+    description: "Price inquiries or quote requests before purchase"
+    examples:
+      - "Price for the 2kg specialty coffee beans?"
+      - "¿Cuánto cuesta el servicio de instalación?"
+
+  product_info:
+    agent: product
+    description: "Product features, availability, compatibility, sizing"
+    examples:
+      - "Do you have size 42 in the trail shoes?"
+      - "¿El modelo X es compatible con Android?"
+
+  place_order:
+    agent: commerce
+    description: "Explicit desire to order or purchase"
+    examples:
+      - "Quiero comprar la cafetera Barista Pro, envío a Bogotá"
+      - "I'd like to order 3 units"
+
+  order_status:
+    agent: order
+    description: "Track existing orders or delivery status"
+    examples:
+      - "My order 8A73 is late. When will it arrive?"
+      - "¿Dónde está mi pedido #Z-551?"
+
+  refund_return_exchange:
+    agent: support
+    description: "Refunds, returns, exchanges, cancellations"
+    examples:
+      - "Necesito cambiar este pedido #Z-551 por otro color"
+      - "I want to return this item"
+
+  appointment_booking:
+    agent: info
+    description: "Book, reschedule, or cancel appointments"
+    examples:
+      - "¿Puedo agendar una limpieza dental para el martes a las 10?"
+      - "I need to reschedule my appointment"
+
+  location_directions:
+    agent: info
+    description: "Address, directions, coverage area"
+    examples:
+      - "Dónde están ubicados exactamente?"
+      - "How do I get to your store?"
+
+  human_handoff:
+    agent: support
+    description: "Request to speak with a human agent"
+    examples:
+      - "Can I talk to a person? Phone number?"
+      - "Necesito hablar con alguien"
+
+  small_talk_other:
+    agent: info
+    description: "Greetings, thanks, chitchat, or unclear intent"
+    examples:
+      - "Hola! 😄"
+      - "Thanks for your help"
+
+# Entities that can be extracted from messages
+entities:
+  product:
+    type: string
+    description: "Product name or identifier"
+  
+  quantity:
+    type: number
+    description: "Number of items"
+  
+  order_id:
+    type: string
+    description: "Order or tracking number"
+  
+  date:
+    type: string
+    description: "Date reference (free text)"
+  
+  time:
+    type: string
+    description: "Time reference (free text)"
+  
+  location:
+    type: string
+    description: "Address or location"
+  
+  phone:
+    type: string
+    description: "Phone number"
+  
+  language:
+    type: string
+    enum: ["en", "es", "mixed"]
+    description: "Detected message language"
+
+# System prompt for LLM classification
+system_prompt: |
+  You are a message router for a small business WhatsApp copilot.
+  Classify the lane, customer's intent and extract lightweight entities.
+  ALWAYS return strict JSON with keys: intent, agent, confidence, entities.
+
+  - lane: Which agent domain should handle this turn
+  - intent: A compact intent label meaningful to the chosen lane. (e.g., {{ intent_names | join: ", " }}).
+  - confidence: must be one of: "high", "medium", "low"
+  - entities: it is a JSON object (can be empty) that may include:
+  {%- for entity in entities %}
+  - {{ entity[0] }} ({{ entity[1].type }}) — {{ entity[1].description }}
+  {%- endfor %}
+
+  Follow the pattern in the examples. Be concise and consistent.
+
+  ### Examples
+  {%- for intent in intents %}
+  {%- for example in intent[1].examples %}
+  User: "{{ example }}"
+  JSON: {"intent":"{{ intent[0] }}","lane":"{{ intent[1].agent }}","confidence":"high","entities":{}}
+  {%- endfor %}
+  {%- endfor %}
