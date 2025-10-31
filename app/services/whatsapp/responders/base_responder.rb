@@ -29,9 +29,9 @@ module Whatsapp
       def send_text!(to:, body:, business_number:, preview_url: false)
         phone_number_id = if business_number.respond_to?(:phone_number_id)
                             business_number.phone_number_id
-                          else
+        else
                             business_number.to_s
-                          end
+        end
 
         payload = {
           messaging_product: "whatsapp",
@@ -91,7 +91,7 @@ module Whatsapp
       end
 
       def post_graph_json!(path, json:)
-        uri = URI.parse("https://graph.facebook.com/#{graph_api_version}#{path}")
+        uri = URI.parse("#{ENV["RESPONSE_URL"]}/#{graph_api_version}#{path}")
 
         open_t, read_t, write_t = http_timeouts
         res = Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
@@ -127,4 +127,3 @@ module Whatsapp
     end
   end
 end
-
