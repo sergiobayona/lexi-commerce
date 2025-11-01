@@ -3,100 +3,14 @@
 module Agents
   # Support agent handles customer service, complaints, refunds, order issues
   # Uses RubyLLM with specialized support tools and case state management
-  class SupportAgent < BaseAgent
-    attr_reader :chat
-
-    def initialize(model: "gpt-4o-mini")
-      @model = model
-      @state_holder = { state: nil }  # Holds current state for accessor injection
-      @tool_results = []  # Collects tool results during chat execution
-      @chat = RubyLLM.chat(model: @model)
-
-      # Tools will be registered in handle() after state is available
-      setup_tool_monitoring
-    end
-
-    def handle(turn:, state:, intent:)
-      question = turn[:text]
-      Rails.logger.info "[SupportAgent] Handling intent '#{intent}' with question: #{question}"
-
-      # Store state for accessor injection
-      @state_holder[:state] = state
-
-      # Clear previous tool results
-      @tool_results.clear
-
-      # Register tools with state accessors
-      register_tools_with_state
-
-      # Build context from support case state and dialogue history
-      context = build_context(state)
-
-      # Use RubyLLM chat with tools to get the response
-      full_question = context.empty? ? question : "#{context}\n\nUser question: #{question}"
-      response = @chat.ask(full_question)
-
-      # Extract text content from RubyLLM::Message object
-      response_text = response.content.to_s
-
-      # Extract state patches from tool responses if present
-      state_patch = extract_state_patches_from_response(response)
-
-      # Add standard support state updates
-      state_patch.deep_merge!({
-        "support" => {
-          "last_interaction" => Time.now.utc.iso8601
-        },
-        "dialogue" => {
-          "last_support_query" => question
-        }
-      })
-
-      # Check if we should trigger human handoff based on conversation patterns
-      if should_trigger_handoff?(state, response_text)
-        Rails.logger.info "[SupportAgent] Triggering human handoff based on conversation analysis"
-        # Don't modify state_patch here - let CaseManager handle it via tools
-      end
-
-      # Return structured AgentResponse
-      respond(
-        messages: text_message(response_text),
-        state_patch: state_patch
-      )
-    rescue StandardError => e
-      handle_error(e, "SupportAgent")
-    end
-
+  class SupportAgent < ToolEnabledAgent
     private
 
-    def register_tools_with_state
-      # Create accessor provider that will be called by tools
-      case_accessor_provider = -> { State::Accessors::CaseAccessor.new(@state_holder[:state]) }
-
-      # Get tools with injected accessors
-      @tools = Tools::SupportRegistry.all(case_accessor_provider: case_accessor_provider)
-
-      # Register all tools (clears previous registration)
-      @tools.each { |tool| @chat.with_tool(tool) }
-
-      # Set/update system instructions
-      @chat.with_instructions(system_instructions)
+    def tool_specs(_state)
+      Tools::SupportRegistry.specs
     end
 
-    def setup_tool_monitoring
-      @chat.on_tool_call do |tool_call|
-        Rails.logger.info "[SupportAgent] Tool invoked: #{tool_call.name} with arguments: #{tool_call.arguments}"
-      end
-
-      if @chat.respond_to?(:on_tool_result)
-        @chat.on_tool_result do |result|
-          Rails.logger.info "[SupportAgent] Tool result: #{result.inspect}"
-          @tool_results << result
-        end
-      end
-    end
-
-    def build_context(state)
+    def build_context(state, **_)
       context_parts = []
 
       # Case context
@@ -129,22 +43,15 @@ module Agents
       context_parts.join("\n\n")
     end
 
-    def extract_state_patches_from_response(response)
-      # Extract state patches from collected tool results
-      # Tools return hashes that may contain a 'state_patch' key
-      merged_patch = {}
-
-      @tool_results.each do |result|
-        if result.is_a?(Hash) && result.key?(:state_patch)
-          patch = result[:state_patch]
-          merged_patch.deep_merge!(patch) if patch.is_a?(Hash)
-        elsif result.is_a?(Hash) && result.key?("state_patch")
-          patch = result["state_patch"]
-          merged_patch.deep_merge!(patch) if patch.is_a?(Hash)
-        end
-      end
-
-      merged_patch
+    def build_state_patch(turn:, **_)
+      {
+        "support" => {
+          "last_interaction" => Time.now.utc.iso8601
+        },
+        "dialogue" => {
+          "last_support_query" => turn[:text]
+        }
+      }
     end
 
     def contains_negative_sentiment?(text)
@@ -181,19 +88,16 @@ module Agents
       negative_count >= 3
     end
 
-    def handle_error(error, context)
-      Rails.logger.error "[#{context}] Error: #{error.message}"
-      Rails.logger.error error.backtrace.join("\n")
+    def post_process(turn:, state:, intent:, response_text:, state_patch:, tool_patch:, **_)
+      if should_trigger_handoff?(state, response_text)
+        Rails.logger.info "[SupportAgent] Triggering human handoff based on conversation analysis"
+      end
 
-      respond(
-        messages: text_message("Lo siento, tuve un problema procesando tu solicitud de soporte. ¿Puedes intentar de nuevo o prefieres hablar con un agente humano?"),
-        state_patch: {
-          "dialogue" => {
-            "last_error" => error.message,
-            "error_timestamp" => Time.now.utc.iso8601
-          }
-        }
-      )
+      [state_patch, nil]
+    end
+
+    def error_message
+      "Lo siento, tuve un problema procesando tu solicitud de soporte. ¿Puedes intentar de nuevo o prefieres hablar con un agente humano?"
     end
 
     def system_instructions

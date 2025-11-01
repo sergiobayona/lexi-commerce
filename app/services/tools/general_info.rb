@@ -3,13 +3,15 @@
 # Tool registry for general information tools
 # Individual tools are defined in separate files for better maintainability and autoloading
 #
-# Usage:
-#   tools = Tools::GeneralInfo.all
-#   tools.each { |tool| agent.register_tool(tool) }
+# Provides ToolSpec entries for general information tooling.
 module Tools
   class GeneralInfo
-    def self.all
-      [ BusinessHours, Locations, GeneralFaq ]
+    def self.specs
+      [
+        ToolSpec.new(id: :business_hours, factory: ->(_agent) { BusinessHours.new }),
+        ToolSpec.new(id: :locations, factory: ->(_agent) { Locations.new }),
+        ToolSpec.new(id: :general_faq, factory: ->(_agent) { GeneralFaq.new })
+      ]
     end
   end
 end

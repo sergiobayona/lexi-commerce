@@ -3,17 +3,15 @@
 # Tool registry for product-related tools
 # Individual tools are defined in separate files in tools/product/ directory
 #
-# Usage:
-#   tools = Tools::ProductRegistry.all
-#   tools.each { |tool| agent.chat.with_tool(tool) }
+# Provides ToolSpec entries for product catalogue tooling.
 module Tools
   class ProductRegistry
-    def self.all
+    def self.specs
       [
-        Product::ProductSearch,
-        Product::ProductDetails,
-        Product::ProductAvailability,
-        Product::ProductComparison
+        ToolSpec.new(id: :product_search, factory: ->(_agent) { Product::ProductSearch.new }),
+        ToolSpec.new(id: :product_details, factory: ->(_agent) { Product::ProductDetails.new }),
+        ToolSpec.new(id: :product_availability, factory: ->(_agent) { Product::ProductAvailability.new }),
+        ToolSpec.new(id: :product_comparison, factory: ->(_agent) { Product::ProductComparison.new })
       ]
     end
   end

@@ -3,18 +3,28 @@
 # Tool registry for order-related tools
 # Individual tools are defined in separate files in tools/order/ directory
 #
-# Usage:
-#   tools = Tools::OrderRegistry.all(order_accessor: order_accessor, state: state)
-#   tools.each { |tool| agent.chat.with_tool(tool) }
-#
-# Note: Order tools require order state accessor for verification and tracking
+# Provides ToolSpec entries for order-related functionality.
 module Tools
   class OrderRegistry
-    def self.all(order_accessor_provider:, state_provider:)
+    def self.specs
       [
-        Order::OrderLookup.new(order_accessor_provider, state_provider),
-        Order::ShippingStatus.new(order_accessor_provider),
-        Order::DeliveryEstimate.new(order_accessor_provider)
+        ToolSpec.new(
+          id: :order_lookup,
+          factory: lambda { |agent|
+            Order::OrderLookup.new(
+              agent.accessor_provider(State::Accessors::OrderAccessor),
+              agent.state_provider
+            )
+          }
+        ),
+        ToolSpec.new(
+          id: :shipping_status,
+          factory: ->(agent) { Order::ShippingStatus.new(agent.accessor_provider(State::Accessors::OrderAccessor)) }
+        ),
+        ToolSpec.new(
+          id: :delivery_estimate,
+          factory: ->(agent) { Order::DeliveryEstimate.new(agent.accessor_provider(State::Accessors::OrderAccessor)) }
+        )
       ]
     end
   end
