@@ -3,47 +3,62 @@
 require "rails_helper"
 
 RSpec.describe Agents::InfoAgent do
-  subject(:agent) { described_class.new }
+  let(:mock_chat) { instance_double(RubyLLM::Chat) }
+
+  before do
+    allow(RubyLLM).to receive(:chat).and_return(mock_chat)
+    allow(mock_chat).to receive(:with_instructions).and_return(mock_chat)
+    allow(mock_chat).to receive(:with_tools).and_return(mock_chat)
+    allow(mock_chat).to receive(:with_tool).and_return(mock_chat)
+    allow(mock_chat).to receive(:on_tool_call).and_return(mock_chat)
+    allow(mock_chat).to receive(:respond_to?).and_call_original
+    allow(mock_chat).to receive(:respond_to?).with(:with_tools).and_return(true)
+  end
 
   describe "#initialize" do
-    it "initializes with default model" do
+    subject(:agent) { described_class.new }
+
+    before do
+      allow(mock_chat).to receive(:respond_to?).with(:on_tool_result).and_return(true)
+      allow(mock_chat).to receive(:on_tool_result).and_return(mock_chat)
+    end
+
+    it "initializes with default model and chat instance" do
       expect(agent).to be_a(Agents::InfoAgent)
-      expect(agent.chat).to be_present
+      expect(agent.chat).to eq(mock_chat)
     end
 
     it "accepts custom model parameter" do
+      allow(mock_chat).to receive(:respond_to?).with(:on_tool_result).and_return(true)
+      allow(mock_chat).to receive(:on_tool_result).and_return(mock_chat)
+
       custom_agent = described_class.new(model: "gpt-4")
       expect(custom_agent).to be_a(Agents::InfoAgent)
     end
 
-    it "registers all general info tools" do
-      expect(agent.instance_variable_get(:@tools)).to include(
-        Tools::BusinessHours,
-        Tools::Locations,
-        Tools::GeneralFaq
-      )
+    it "exposes tool specs for general info tools" do
+      spec_ids = agent.send(:tool_specs, {}).map(&:id)
+      expect(spec_ids).to match_array(%i[business_hours locations general_faq])
     end
   end
 
   describe "#ask" do
-    let(:mock_chat) { instance_double(RubyLLM::Chat) }
-
-    before do
-      allow(RubyLLM).to receive(:chat).and_return(mock_chat)
-      allow(mock_chat).to receive(:with_tool).and_return(mock_chat)
-      allow(mock_chat).to receive(:with_instructions).and_return(mock_chat)
-      allow(mock_chat).to receive(:on_tool_call).and_return(mock_chat)
+    let(:agent) do
+      allow(mock_chat).to receive(:respond_to?).with(:on_tool_result).and_return(true)
+      allow(mock_chat).to receive(:on_tool_result).and_return(mock_chat)
+      described_class.new
     end
 
     it "processes questions through chat" do
-      expect(mock_chat).to receive(:ask).with("What are your business hours?").and_return("We're open Monday-Friday 11 AM - 10 PM")
+      allow(mock_chat).to receive(:ask).with("What are your business hours?")
+                                       .and_return(double(content: "We're open Monday-Friday 11 AM - 10 PM"))
 
       response = agent.ask("What are your business hours?")
-      expect(response).to be_present
+      expect(response).to eq("We're open Monday-Friday 11 AM - 10 PM")
     end
 
     it "logs questions and responses" do
-      allow(mock_chat).to receive(:ask).and_return("Response")
+      allow(mock_chat).to receive(:ask).and_return(double(content: "Response"))
 
       expect(Rails.logger).to receive(:info).with("[InfoAgent] Processing question: Test question")
       expect(Rails.logger).to receive(:info).with("[InfoAgent] Response: Response")
@@ -51,7 +66,7 @@ RSpec.describe Agents::InfoAgent do
       agent.ask("Test question")
     end
 
-    context "error handling" do
+    context "when chat raises an error" do
       it "handles errors gracefully" do
         allow(mock_chat).to receive(:ask).and_raise(StandardError.new("API Error"))
 
@@ -65,6 +80,12 @@ RSpec.describe Agents::InfoAgent do
   end
 
   describe "#system_instructions" do
+    let(:agent) do
+      allow(mock_chat).to receive(:respond_to?).with(:on_tool_result).and_return(true)
+      allow(mock_chat).to receive(:on_tool_result).and_return(mock_chat)
+      described_class.new
+    end
+
     it "includes tool descriptions" do
       instructions = agent.send(:system_instructions)
 

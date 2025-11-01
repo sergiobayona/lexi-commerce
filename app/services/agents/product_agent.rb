@@ -3,64 +3,14 @@
 module Agents
   # Product agent handles product-specific questions (details, attributes, categories, availability, comparisons)
   # Uses RubyLLM with specialized product tools for intelligent product queries
-  class ProductAgent < BaseAgent
-    attr_reader :chat
-
-    def initialize(model: "gpt-4o-mini")
-      @model = model
-      @tools = Tools::ProductRegistry.all
-      @chat = RubyLLM.chat(model: @model)
-
-      # Register all tools
-      @tools.each { |tool| @chat.with_tool(tool) }
-
-      # Set system instructions
-      @chat.with_instructions(system_instructions)
-
-      # Add tool call monitoring for debugging
-      @chat.on_tool_call do |tool_call|
-        Rails.logger.info "[ProductAgent] Tool invoked: #{tool_call.name} with arguments: #{tool_call.arguments}"
-      end
-    end
-
-    # Implement required BaseAgent interface
-    def handle(turn:, state:, intent:)
-      question = turn[:text]
-      Rails.logger.info "[ProductAgent] Handling intent '#{intent}' with question: #{question}"
-
-      # Build context from recent conversation and product focus
-      context = build_context(state)
-
-      # Use RubyLLM chat with tools to get the response
-      full_question = context.empty? ? question : "#{context}\n\nUser question: #{question}"
-      response = @chat.ask(full_question)
-
-      # Extract text content from RubyLLM::Message object
-      response_text = response.content.to_s
-
-      # Extract product IDs mentioned in conversation for context tracking
-      product_ids = extract_product_ids(response_text)
-
-      # Return structured AgentResponse
-      respond(
-        messages: text_message(response_text),
-        state_patch: {
-          "slots" => {
-            "product_focus" => product_ids,
-            "last_product_query" => question
-          },
-          "dialogue" => {
-            "last_interaction" => Time.now.utc.iso8601
-          }
-        }
-      )
-    rescue StandardError => e
-      handle_error(e, "ProductAgent")
-    end
-
+  class ProductAgent < ToolEnabledAgent
     private
 
-    def build_context(state)
+    def tool_specs(_state)
+      Tools::ProductRegistry.specs
+    end
+
+    def build_context(state, **_)
       context_parts = []
 
       # Include recent turns for pronoun resolution ("the other one", "compare these")
@@ -81,24 +31,25 @@ module Agents
       context_parts.join("\n\n")
     end
 
+    def build_state_patch(turn:, response_text:, **_)
+      {
+        "slots" => {
+          "product_focus" => extract_product_ids(response_text),
+          "last_product_query" => turn[:text]
+        },
+        "dialogue" => {
+          "last_interaction" => Time.now.utc.iso8601
+        }
+      }
+    end
+
     def extract_product_ids(response_text)
       # Extract product IDs from response (format: prod_XXX)
       response_text.scan(/prod_\d+/).uniq
     end
 
-    def handle_error(error, context)
-      Rails.logger.error "[#{context}] Error: #{error.message}"
-      Rails.logger.error error.backtrace.join("\n")
-
-      respond(
-        messages: text_message("Lo siento, tuve un problema procesando tu consulta de productos. ¿Puedes intentar de nuevo?"),
-        state_patch: {
-          "dialogue" => {
-            "last_error" => error.message,
-            "error_timestamp" => Time.now.utc.iso8601
-          }
-        }
-      )
+    def error_message
+      "Lo siento, tuve un problema procesando tu consulta de productos. ¿Puedes intentar de nuevo?"
     end
 
     def system_instructions

@@ -11,8 +11,13 @@ RSpec.describe Agents::OrderStatusAgent do
     # Mock RubyLLM before creating agent
     allow(RubyLLM).to receive(:chat).and_return(mock_chat)
     allow(mock_chat).to receive(:with_tool).and_return(mock_chat)
+    allow(mock_chat).to receive(:with_tools).and_return(mock_chat)
     allow(mock_chat).to receive(:with_instructions).and_return(mock_chat)
-    allow(mock_chat).to receive(:on_tool_call).and_yield(double(name: "test", arguments: {}))
+    allow(mock_chat).to receive(:on_tool_call).and_return(mock_chat)
+    allow(mock_chat).to receive(:respond_to?).and_call_original
+    allow(mock_chat).to receive(:respond_to?).with(:with_tools).and_return(true)
+    allow(mock_chat).to receive(:respond_to?).with(:on_tool_result).and_return(true)
+    allow(mock_chat).to receive(:on_tool_result).and_return(mock_chat)
 
     described_class.new
   end
@@ -194,6 +199,10 @@ RSpec.describe Agents::OrderStatusAgent do
   describe "inheritance" do
     it "inherits from BaseAgent" do
       expect(agent).to be_a(Agents::BaseAgent)
+    end
+
+    it "mixes in tool-enabled behaviour" do
+      expect(agent).to be_a(Agents::ToolEnabledAgent)
     end
 
     it "responds to handle method" do

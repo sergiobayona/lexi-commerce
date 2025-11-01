@@ -4,17 +4,29 @@
 # Individual tools are defined in separate files in tools/commerce/ directory
 #
 # Usage:
-#   tools = Tools::CommerceRegistry.all(cart_accessor: cart, state: state)
-#   tools.each { |tool| agent.chat.with_tool(tool) }
-#
-# Note: Commerce tools require state accessors for cart management
+#   specs = Tools::CommerceRegistry.specs
+#   specs.each { |spec| agent.register(spec) }
 module Tools
   class CommerceRegistry
-    def self.all(cart_accessor_provider:, state_provider:)
+    def self.specs
       [
-        Commerce::CartManager.new(cart_accessor_provider),
-        Commerce::ProductCatalog.new,
-        Commerce::CheckoutValidator.new(cart_accessor_provider, state_provider)
+        ToolSpec.new(
+          id: :cart_manager,
+          factory: ->(agent) { Commerce::CartManager.new(agent.accessor_provider(State::Accessors::CartAccessor)) }
+        ),
+        ToolSpec.new(
+          id: :product_catalog,
+          factory: ->(_agent) { Commerce::ProductCatalog.new }
+        ),
+        ToolSpec.new(
+          id: :checkout_validator,
+          factory: lambda { |agent|
+            Commerce::CheckoutValidator.new(
+              agent.accessor_provider(State::Accessors::CartAccessor),
+              agent.state_provider
+            )
+          }
+        )
       ]
     end
   end

@@ -3,100 +3,14 @@
 module Agents
   # Commerce agent handles shopping cart, orders, product browsing, checkout
   # Uses RubyLLM with specialized commerce tools and state accessors for cart management
-  class CommerceAgent < BaseAgent
-    attr_reader :chat
-
-    def initialize(model: "gpt-4o-mini")
-      @model = model
-      @state_holder = { state: nil }  # Holds current state for accessor injection
-      @tool_results = []  # Collects tool results during chat execution
-      @chat = RubyLLM.chat(model: @model)
-
-      # Tools will be registered in handle() after state is available
-      setup_tool_monitoring
-    end
-
-    def handle(turn:, state:, intent:)
-      question = turn[:text]
-      Rails.logger.info "[CommerceAgent] Handling intent '#{intent}' with question: #{question}"
-
-      # Store state for accessor injection
-      @state_holder[:state] = state
-
-      # Clear previous tool results
-      @tool_results.clear
-
-      # Register tools with state accessors
-      register_tools_with_state
-
-      # Build context from cart and commerce state
-      context = build_context(state)
-
-      # Use RubyLLM chat with tools to get the response
-      full_question = context.empty? ? question : "#{context}\n\nUser question: #{question}"
-      response = @chat.ask(full_question)
-
-      # Extract text content from RubyLLM::Message object
-      response_text = response.content.to_s
-
-      # Extract state patches from tool responses if present
-      # Tools return state_patch in their responses, we need to merge them
-      state_patch = extract_state_patches_from_response(response)
-
-      # Add standard commerce state updates
-      state_patch.deep_merge!({
-        "commerce" => {
-          "last_interaction" => Time.now.utc.iso8601
-        },
-        "dialogue" => {
-          "last_commerce_query" => question
-        }
-      })
-
-      # Return structured AgentResponse
-      respond(
-        messages: text_message(response_text),
-        state_patch: state_patch
-      )
-    rescue StandardError => e
-      handle_error(e, "CommerceAgent")
-    end
-
+  class CommerceAgent < ToolEnabledAgent
     private
 
-    def register_tools_with_state
-      # Create accessor providers that will be called by tools
-      cart_accessor_provider = -> { State::Accessors::CartAccessor.new(@state_holder[:state]) }
-      state_provider = -> { @state_holder[:state] }
-
-      # Get tools with injected accessors
-      @tools = Tools::CommerceRegistry.all(
-        cart_accessor_provider: cart_accessor_provider,
-        state_provider: state_provider
-      )
-
-      # Replace any previously registered tools before adding fresh instances
-      @chat.with_tools(replace: true) if @chat.respond_to?(:with_tools)
-      @tools.each { |tool| @chat.with_tool(tool) }
-
-      # Set/update system instructions
-      @chat.with_instructions(system_instructions)
+    def tool_specs(_state)
+      Tools::CommerceRegistry.specs
     end
 
-    def setup_tool_monitoring
-      @chat.on_tool_call do |tool_call|
-        Rails.logger.info "[CommerceAgent] Tool invoked: #{tool_call.name} with arguments: #{tool_call.arguments}"
-      end
-
-      if @chat.respond_to?(:on_tool_result)
-        @chat.on_tool_result do |result|
-          Rails.logger.info "[CommerceAgent] Tool result: #{result.inspect}"
-          @tool_results << result
-        end
-      end
-    end
-
-    def build_context(state)
+    def build_context(state, **_)
       context_parts = []
 
       # Cart context
@@ -124,37 +38,19 @@ module Agents
       context_parts.join("\n\n")
     end
 
-    def extract_state_patches_from_response(response)
-      # Extract state patches from collected tool results
-      # Tools return hashes that may contain a 'state_patch' key
-      merged_patch = {}
-
-      @tool_results.each do |result|
-        if result.is_a?(Hash) && result.key?(:state_patch)
-          patch = result[:state_patch]
-          merged_patch.deep_merge!(patch) if patch.is_a?(Hash)
-        elsif result.is_a?(Hash) && result.key?("state_patch")
-          patch = result["state_patch"]
-          merged_patch.deep_merge!(patch) if patch.is_a?(Hash)
-        end
-      end
-
-      merged_patch
+    def build_state_patch(turn:, **_)
+      {
+        "commerce" => {
+          "last_interaction" => Time.now.utc.iso8601
+        },
+        "dialogue" => {
+          "last_commerce_query" => turn[:text]
+        }
+      }
     end
 
-    def handle_error(error, context)
-      Rails.logger.error "[#{context}] Error: #{error.message}"
-      Rails.logger.error error.backtrace.join("\n")
-
-      respond(
-        messages: text_message("Lo siento, tuve un problema procesando tu solicitud de compra. ¿Puedes intentar de nuevo?"),
-        state_patch: {
-          "dialogue" => {
-            "last_error" => error.message,
-            "error_timestamp" => Time.now.utc.iso8601
-          }
-        }
-      )
+    def error_message
+      "Lo siento, tuve un problema procesando tu solicitud de compra. ¿Puedes intentar de nuevo?"
     end
 
     def system_instructions
