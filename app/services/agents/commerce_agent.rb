@@ -69,15 +69,14 @@ module Agents
       cart_accessor_provider = -> { State::Accessors::CartAccessor.new(@state_holder[:state]) }
       state_provider = -> { @state_holder[:state] }
 
-      # Get tools with injected accessors and wrap them to capture results
+      # Get tools with injected accessors
       @tools = Tools::CommerceRegistry.all(
         cart_accessor_provider: cart_accessor_provider,
         state_provider: state_provider
-      ).map do |tool|
-        wrap_tool_to_capture_result(tool)
-      end
+      )
 
-      # Register all wrapped tools (clears previous registration)
+      # Replace any previously registered tools before adding fresh instances
+      @chat.with_tools(replace: true) if @chat.respond_to?(:with_tools)
       @tools.each { |tool| @chat.with_tool(tool) }
 
       # Set/update system instructions
@@ -87,6 +86,13 @@ module Agents
     def setup_tool_monitoring
       @chat.on_tool_call do |tool_call|
         Rails.logger.info "[CommerceAgent] Tool invoked: #{tool_call.name} with arguments: #{tool_call.arguments}"
+      end
+
+      if @chat.respond_to?(:on_tool_result)
+        @chat.on_tool_result do |result|
+          Rails.logger.info "[CommerceAgent] Tool result: #{result.inspect}"
+          @tool_results << result
+        end
       end
     end
 
@@ -116,42 +122,6 @@ module Agents
       end
 
       context_parts.join("\n\n")
-    end
-
-    # Wrap a tool to capture its result for state patch extraction
-    def wrap_tool_to_capture_result(original_tool)
-      # Create a wrapper class that delegates to the original tool
-      # but captures the result
-      wrapper = Class.new(original_tool.class) do
-        define_method(:initialize) do |*args, **kwargs|
-          @original_tool = original_tool
-          @tool_results_collector = nil
-        end
-
-        define_method(:execute) do |**params|
-          result = @original_tool.execute(**params)
-          # Store the result for extraction
-          @tool_results_collector << result if @tool_results_collector
-          result
-        end
-
-        # Delegate all other methods to the original tool
-        define_method(:method_missing) do |method, *args, &block|
-          @original_tool.send(method, *args, &block)
-        end
-
-        define_method(:respond_to_missing?) do |method, include_private = false|
-          @original_tool.respond_to?(method, include_private)
-        end
-
-        define_method(:set_collector) do |collector|
-          @tool_results_collector = collector
-        end
-      end
-
-      wrapped = wrapper.new
-      wrapped.set_collector(@tool_results)
-      wrapped
     end
 
     def extract_state_patches_from_response(response)

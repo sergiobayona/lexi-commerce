@@ -9,6 +9,7 @@ module Agents
     def initialize(model: "gpt-4o-mini")
       @model = model
       @state_holder = { state: nil }  # Holds current state for accessor injection
+      @tool_results = []  # Collects tool results during chat execution
       @chat = RubyLLM.chat(model: @model)
 
       # Tools will be registered in handle() after state is available
@@ -21,6 +22,9 @@ module Agents
 
       # Store state for accessor injection
       @state_holder[:state] = state
+
+      # Clear previous tool results
+      @tool_results.clear
 
       # Register tools with state accessors
       register_tools_with_state
@@ -35,15 +39,18 @@ module Agents
       # Extract text content from RubyLLM::Message object
       response_text = response.content.to_s
 
-      # Build state patch
-      state_patch = {
+      # Extract state patches from tool responses if present
+      state_patch = extract_state_patches_from_response(response)
+
+      # Add standard support state updates
+      state_patch.deep_merge!({
         "support" => {
           "last_interaction" => Time.now.utc.iso8601
         },
         "dialogue" => {
           "last_support_query" => question
         }
-      }
+      })
 
       # Check if we should trigger human handoff based on conversation patterns
       if should_trigger_handoff?(state, response_text)
@@ -80,6 +87,13 @@ module Agents
       @chat.on_tool_call do |tool_call|
         Rails.logger.info "[SupportAgent] Tool invoked: #{tool_call.name} with arguments: #{tool_call.arguments}"
       end
+
+      if @chat.respond_to?(:on_tool_result)
+        @chat.on_tool_result do |result|
+          Rails.logger.info "[SupportAgent] Tool result: #{result.inspect}"
+          @tool_results << result
+        end
+      end
     end
 
     def build_context(state)
@@ -113,6 +127,24 @@ module Agents
       end
 
       context_parts.join("\n\n")
+    end
+
+    def extract_state_patches_from_response(response)
+      # Extract state patches from collected tool results
+      # Tools return hashes that may contain a 'state_patch' key
+      merged_patch = {}
+
+      @tool_results.each do |result|
+        if result.is_a?(Hash) && result.key?(:state_patch)
+          patch = result[:state_patch]
+          merged_patch.deep_merge!(patch) if patch.is_a?(Hash)
+        elsif result.is_a?(Hash) && result.key?("state_patch")
+          patch = result["state_patch"]
+          merged_patch.deep_merge!(patch) if patch.is_a?(Hash)
+        end
+      end
+
+      merged_patch
     end
 
     def contains_negative_sentiment?(text)
